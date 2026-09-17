@@ -1,6 +1,6 @@
 # occt-wasm for NekoCAD
 
-This is the NekoCAD fork of [andymai/occt-wasm](https://github.com/andymai/occt-wasm). NekoCAD installs the npm package from a tarball on a GitHub release of this repository, so a change to the facade reaches the app without the npm registry.
+This is the NekoCAD fork of [andymai/occt-wasm](https://github.com/andymai/occt-wasm). It publishes `@nekocad/occt-wasm` to npm, and NekoCAD installs it under the name `occt-wasm` through an npm alias, so a change to the facade reaches the app.
 
 ## Branches and versions
 
@@ -26,21 +26,21 @@ cargo xtask build-wasi --release  # after a facade change, so the crate stale-ch
 ## Make a release
 
 1. Set the version: `cd ts && npm version 5.0.0-nekocad.N --no-git-tag-version`.
-2. Build and test as above, then `cd ts && npm pack`. The result is `ts/occt-wasm-5.0.0-nekocad.N.tgz`.
+2. Build and test as above, then `cd ts && npm pack` and check the tarball.
 3. Commit the version, tag `v5.0.0-nekocad.N`, and push the branch and the tag.
-4. Make the release with the tarball:
+4. Publish from `ts/`, logged in to npm as a member of `@nekocad`:
 
    ```bash
-   gh release create v5.0.0-nekocad.N ts/occt-wasm-5.0.0-nekocad.N.tgz \
-     --repo nekocadhq/occt-wasm --target nekocad-build --prerelease \
-     --title "occt-wasm 5.0.0-nekocad.N" --notes "..."
+   cd ts && npm publish nekocad-occt-wasm-5.0.0-nekocad.N.tgz --access public --tag nekocad
    ```
 
-5. In the NekoCAD platform repository, set `occt-wasm` in `packages/kernel/package.json` to
-   `https://github.com/nekocadhq/occt-wasm/releases/download/v5.0.0-nekocad.N/occt-wasm-5.0.0-nekocad.N.tgz`,
-   then run `pnpm install`. The release workflow there runs `just wasm` and packs the new wasm.
+   `--tag nekocad` keeps `latest` off a prerelease version.
 
-The npm publish, release-please, and crates.io workflows only run in `andymai/occt-wasm`, so a release here publishes nothing to a registry.
+5. In the NekoCAD platform repository:
+   `pnpm --dir packages/kernel add occt-wasm@npm:@nekocad/occt-wasm@5.0.0-nekocad.N`.
+   `pnpm-workspace.yaml` excludes `@nekocad/*` from the release age wait, so a new version installs at once.
+
+The npm publish, release-please, and crates.io workflows of upstream only run in `andymai/occt-wasm`, so pushing here publishes nothing.
 
 ## Builder image
 

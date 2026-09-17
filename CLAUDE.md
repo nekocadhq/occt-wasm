@@ -54,7 +54,7 @@ Shapes live in a u32-keyed arena (`store`/`get`/`release`/`releaseAll`); IDs are
 - **lint** (no WASM): `cargo fmt --check`, `clippy -D warnings`, `tsgo --noEmit` (TS 7 native compiler; `typescript@6` stays for eslint/typedoc's JS API), `eslint`, plus the codegen drift check. Also `npm run typecheck:tests` (`tsconfig.test.json` covers `test/`, which the `ts/` config excludes) and `npm run typecheck:docs`.
 - **build-test**: builds the Embind WASM in the builder container, runs the full vitest suite + the bench gate.
 - **build-wasi**: the `wasm.br` stale-check above. Releases ship via release-please → npm (OIDC) and a `crate-v*` tag → crates.io.
-- **nekocadhq fork**: the release-please, npm, and crates.io jobs only run in `andymai/occt-wasm`. A NekoCAD release is an `npm pack` tarball on a GitHub release of `nekocadhq/occt-wasm`, versioned `<upstream>-nekocad.<n>`. The steps are in `NEKOCAD.md`.
+- **nekocadhq fork**: the release-please, npm, and crates.io jobs only run in `andymai/occt-wasm`. A NekoCAD release is `@nekocad/occt-wasm` on npm, versioned `<upstream>-nekocad.<n>`. The steps are in `NEKOCAD.md`.
 
 ## Conventions
 - Rust edition 2024, brepkit-level lints (deny `unsafe`/`unwrap`/`panic`). C++ clang-format (LLVM, 4-space, 100 col). TS strict, ESM-only, branded `ShapeHandle`.
