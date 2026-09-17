@@ -87,6 +87,16 @@ describe("meshShape: force", () => {
         expect(kernel.meshShape(shape, { ...COARSE, force: true }).indices.length).toBe(coarse);
     });
 
+    it("a forced mesh follows a new angle at the same linear deflection", () => {
+        // OCCT decides whether to reuse a triangulation by the linear deflection alone.
+        const narrow = { linearDeflection: LOOSE, angularDeflection: 0.1 };
+        const expected = kernel.meshShape(cylinder(), narrow).indices.length;
+        const shape = cylinder();
+        const wide = kernel.meshShape(shape, { linearDeflection: LOOSE, angularDeflection: 0.8 }).indices.length;
+        expect(expected).toBeGreaterThan(4 * wide);
+        expect(kernel.meshShape(shape, { ...narrow, force: true }).indices.length).toBe(expected);
+    });
+
     it("a forced mesh keeps the triangulation that the shape had", () => {
         const fineShape = cylinder();
         const fine = kernel.meshShape(fineShape, FINE).indices.length;

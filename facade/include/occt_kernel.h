@@ -18,8 +18,9 @@ TDF_Label lookupLabel(const std::map<int, TDF_Label>& registry, int labelId);
 
 // Mesh helpers (defined in kernel.cpp, used by generated tessellation and STL methods)
 
-/// Meshes a shape. With `force`, the mesher replaces a finer triangulation that the
-/// shape already holds, where it otherwise keeps it.
+/// Meshes a shape. With `force`, it first removes the triangulation that the shape holds,
+/// which the mesher otherwise keeps when it is finer or has a different angle. Hold a
+/// MeshSnapshot of the shape to put that triangulation back.
 void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angularDeflection,
                  bool relative, bool force);
 

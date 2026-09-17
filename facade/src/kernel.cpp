@@ -3,6 +3,7 @@
 #include <BRepGProp.hxx>
 #include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
+#include <BRepTools.hxx>
 #include <BRep_Builder.hxx>
 #include <BRep_CurveRepresentation.hxx>
 #include <BRep_TEdge.hxx>
@@ -60,8 +61,12 @@ void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angu
     params.Angle = angularDeflection;
     params.Relative = relative;
     params.InParallel = false;
-    // Without this the mesher reuses a triangulation that is finer than the one requested.
-    params.AllowQualityDecrease = force;
+    if (force) {
+        // The mesher reuses a triangulation by its linear deflection alone, so a finer one, or
+        // one with a different angle, stays. Remove it, and mesh from nothing.
+        BRepTools::Clean(shape);
+        params.AllowQualityDecrease = true;
+    }
     BRepMesh_IncrementalMesh mesher(shape, params);
     if (!mesher.IsDone()) {
         throw std::runtime_error("meshing failed");
