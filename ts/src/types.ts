@@ -53,6 +53,29 @@ export interface TessellateOptions {
     relative?: boolean | undefined;
 }
 
+/** Options for {@link OcctKernel.meshShape}. */
+export interface MeshShapeOptions extends TessellateOptions {
+    /**
+     * Mesh at exactly this deflection. OCCT otherwise keeps a triangulation
+     * that is finer than the one requested, so a coarse mesh after a fine one
+     * comes out fine. The triangulation that the shape held before is put
+     * back afterwards. `relative` is not supported with `force`. Default: false
+     */
+    force?: boolean | undefined;
+}
+
+/** Options for {@link OcctKernel.exportStl}. */
+export interface StlExportOptions {
+    /** Maximum chord deviation from the true surface. Default: 0.1 */
+    linearDeflection?: number | undefined;
+    /** Maximum angular deviation in radians. Default: 0.5 */
+    angularDeflection?: number | undefined;
+    /** Write the text format as a string instead of binary bytes. Default: false */
+    ascii?: boolean | undefined;
+    /** Mesh at exactly this deflection, as {@link MeshShapeOptions.force}. Default: false */
+    force?: boolean | undefined;
+}
+
 /** Options for WASM module initialization. */
 export interface InitOptions {
     /**

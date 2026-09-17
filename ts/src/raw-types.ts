@@ -263,6 +263,7 @@ export interface OcctRawKernel {
     wireframe(id: number, deflection: number): RawEdgeData;
     hasTriangulation(id: number): boolean;
     meshShape(id: number, linDefl: number, angDefl: number): RawMeshData;
+    meshShapeForced(id: number, linDefl: number, angDefl: number): RawMeshData;
     meshBatch(ids: EmbindVectorU32, linDefl: number, angDefl: number): RawMeshBatchData;
 
     // I/O
@@ -272,6 +273,8 @@ export interface OcctRawKernel {
     importStlBinary(data: Uint8Array): number;
     exportStl(id: number, linearDeflection: number, ascii: boolean): string;
     exportStlBinary(id: number, linearDeflection: number): Uint8Array;
+    exportStlAdvanced(id: number, linearDeflection: number, angularDeflection: number, ascii: boolean, force: boolean): string;
+    exportStlBinaryAdvanced(id: number, linearDeflection: number, angularDeflection: number, force: boolean): Uint8Array;
     toBREP(id: number): string;
     fromBREP(data: string): number;
     exportBrepBinary(id: number): string;

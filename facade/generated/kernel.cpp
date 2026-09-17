@@ -146,6 +146,7 @@
 #include <XCAFDoc_DocumentTool.hxx>
 #include <XCAFDoc_ShapeTool.hxx>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <gp_Ax1.hxx>
 #include <gp_Ax2.hxx>
@@ -162,6 +163,7 @@
 #include <gp_Pnt2d.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
+#include <optional>
 #include <stdexcept>
 
 #include <algorithm>
@@ -3441,6 +3443,46 @@ std::string OcctKernel::exportStlBinary(uint32_t id, double linearDeflection) {
     return exportStl(id, linearDeflection, false);
 }
 
+std::string OcctKernel::exportStlAdvanced(uint32_t id, double linearDeflection, double angularDeflection, bool ascii, bool force) {
+    try {
+        const auto& shape = get(id);
+        
+        std::optional<MeshSnapshot> snapshot;
+        if (force) {
+            snapshot.emplace(shape);
+        }
+        meshShapeAt(shape, linearDeflection, angularDeflection, false, force);
+        
+        StlAPI_Writer writer;
+        writer.ASCIIMode() = ascii;
+        
+        const char* tmpPath = "/tmp/export.stl";
+        if (!writer.Write(shape, tmpPath)) {
+            throw std::runtime_error("write failed");
+        }
+        
+        FILE* f = fopen(tmpPath, "rb");
+        if (!f) {
+            throw std::runtime_error("cannot read temp file");
+        }
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        std::string result(size, '\0');
+        fread(&result[0], 1, size, f);
+        fclose(f);
+        std::remove(tmpPath);
+        
+        return result;
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("exportStlAdvanced: ") + e.what());
+    }
+}
+
+std::string OcctKernel::exportStlBinaryAdvanced(uint32_t id, double linearDeflection, double angularDeflection, bool force) {
+    return exportStlAdvanced(id, linearDeflection, angularDeflection, false, force);
+}
+
 uint32_t OcctKernel::importStlBinary(const std::string& data) {
     return importStl(data);
 }
@@ -3747,6 +3789,14 @@ MeshData OcctKernel::meshShape(uint32_t id, double linearDeflection, double angu
         return tessellate(id, linearDeflection, angularDeflection);
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("meshShape: ") + e.what());
+    }
+}
+
+MeshData OcctKernel::meshShapeForced(uint32_t id, double linearDeflection, double angularDeflection) {
+    try {
+        return buildMeshData(get(id), linearDeflection, angularDeflection, false, true);
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("meshShapeForced: ") + e.what());
     }
 }
 

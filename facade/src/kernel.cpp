@@ -4,10 +4,15 @@
 #include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRep_Builder.hxx>
+#include <BRep_CurveRepresentation.hxx>
+#include <BRep_TEdge.hxx>
+#include <BRep_TFace.hxx>
 #include <BRep_Tool.hxx>
 #include <GProp_GProps.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <NCollection_Vec3.hxx>
 #include <OSD.hxx>
+#include <Poly_Polygon3D.hxx>
 #include <Poly_Triangulation.hxx>
 #include <TopAbs_Orientation.hxx>
 #include <TopExp_Explorer.hxx>
@@ -22,7 +27,9 @@
 #include <gp_Dir.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Pnt2d.hxx>
+#include <optional>
 #include <stdexcept>
+#include <unordered_set>
 #include <vector>
 
 // --- XCAF helpers (used by generated xcaf methods) ---
@@ -41,6 +48,75 @@ TDF_Label lookupLabel(const std::map<int, TDF_Label>& registry, int labelId) {
         throw std::runtime_error("invalid label ID: " + std::to_string(labelId));
     }
     return it->second;
+}
+
+// --- Mesh helpers (used by generated tessellation and STL methods) ---
+
+void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angularDeflection,
+                 bool relative, bool force) {
+    // The same parameters as the (shape, deflection, relative, angle, parallel) constructor.
+    IMeshTools_Parameters params;
+    params.Deflection = linearDeflection;
+    params.Angle = angularDeflection;
+    params.Relative = relative;
+    params.InParallel = false;
+    // Without this the mesher reuses a triangulation that is finer than the one requested.
+    params.AllowQualityDecrease = force;
+    BRepMesh_IncrementalMesh mesher(shape, params);
+    if (!mesher.IsDone()) {
+        throw std::runtime_error("meshing failed");
+    }
+}
+
+struct MeshSnapshot::Saved {
+    struct Face {
+        Handle(BRep_TFace) tface;
+        NCollection_List<Handle(Poly_Triangulation)> triangulations;
+        Handle(Poly_Triangulation) active;
+    };
+    struct Edge {
+        Handle(BRep_TEdge) tedge;
+        NCollection_List<Handle(BRep_CurveRepresentation)> curves;
+        // The mesher changes a 3D polygon in its representation instead of replacing it.
+        std::vector<std::pair<Handle(BRep_CurveRepresentation), Handle(Poly_Polygon3D)>> polygons;
+    };
+    std::vector<Face> faces;
+    std::vector<Edge> edges;
+};
+
+MeshSnapshot::MeshSnapshot(const TopoDS_Shape& shape) : saved_(std::make_unique<Saved>()) {
+    std::unordered_set<const TopoDS_TShape*> seen;
+    for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+        Handle(BRep_TFace) tface = Handle(BRep_TFace)::DownCast(ex.Current().TShape());
+        if (tface.IsNull() || !seen.insert(tface.get()).second)
+            continue;
+        saved_->faces.push_back({tface, tface->Triangulations(), tface->ActiveTriangulation()});
+    }
+    for (TopExp_Explorer ex(shape, TopAbs_EDGE); ex.More(); ex.Next()) {
+        Handle(BRep_TEdge) tedge = Handle(BRep_TEdge)::DownCast(ex.Current().TShape());
+        if (tedge.IsNull() || !seen.insert(tedge.get()).second)
+            continue;
+        Saved::Edge edge{tedge, tedge->Curves(), {}};
+        for (const auto& curve : edge.curves) {
+            if (curve->IsPolygon3D())
+                edge.polygons.emplace_back(curve, curve->Polygon3D());
+        }
+        saved_->edges.push_back(std::move(edge));
+    }
+}
+
+MeshSnapshot::~MeshSnapshot() {
+    for (auto& face : saved_->faces) {
+        if (face.triangulations.IsEmpty())
+            face.tface->Triangulation(Handle(Poly_Triangulation)(), true);
+        else
+            face.tface->Triangulations(face.triangulations, face.active);
+    }
+    for (auto& edge : saved_->edges) {
+        edge.tedge->ChangeCurves() = edge.curves;
+        for (auto& [curve, polygon] : edge.polygons)
+            curve->Polygon3D(polygon);
+    }
 }
 
 // --- MeshData implementation ---
@@ -139,14 +215,16 @@ TopoDS_Shape OcctKernel::normalizeSolidOrientation(const TopoDS_Shape& shape) {
     return shape;
 }
 
-// Shared mesh builder for tessellate() and tessellateRelative(). `relative`
-// selects per-edge size-relative deflection vs. absolute.
+// Shared mesh builder for tessellate(), tessellateRelative() and meshShapeForced().
+// `relative` selects per-edge size-relative deflection vs. absolute. `force` meshes at
+// the requested deflection even where the shape holds a finer triangulation.
 MeshData OcctKernel::buildMeshData(const TopoDS_Shape& shape, double linearDeflection,
-                                   double angularDeflection, bool relative) {
-    BRepMesh_IncrementalMesh mesher(shape, linearDeflection, relative, angularDeflection, false);
-    if (!mesher.IsDone()) {
-        throw std::runtime_error("tessellate: meshing failed");
-    }
+                                   double angularDeflection, bool relative, bool force) {
+    // A forced mesh puts the triangulation of the shape back after the data is read.
+    std::optional<MeshSnapshot> snapshot;
+    if (force)
+        snapshot.emplace(shape);
+    meshShapeAt(shape, linearDeflection, angularDeflection, relative, force);
 
     // Cache each face's triangulation during this single traversal so the fill
     // pass below reuses it instead of re-exploring the shape and re-fetching

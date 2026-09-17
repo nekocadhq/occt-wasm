@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -14,6 +15,27 @@
 // XCAF helpers (defined in kernel.cpp, used by generated xcaf methods)
 const Handle(TDocStd_Application) & getXCAFApp();
 TDF_Label lookupLabel(const std::map<int, TDF_Label>& registry, int labelId);
+
+// Mesh helpers (defined in kernel.cpp, used by generated tessellation and STL methods)
+
+/// Meshes a shape. With `force`, the mesher replaces a finer triangulation that the
+/// shape already holds, where it otherwise keeps it.
+void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angularDeflection,
+                 bool relative, bool force);
+
+/// Holds the triangulations of the faces and the polygons of the edges of a shape, and
+/// puts them back on destruction. A forced mesh then leaves the shape as it was.
+class MeshSnapshot {
+  public:
+    explicit MeshSnapshot(const TopoDS_Shape& shape);
+    ~MeshSnapshot();
+    MeshSnapshot(const MeshSnapshot&) = delete;
+    MeshSnapshot& operator=(const MeshSnapshot&) = delete;
+
+  private:
+    struct Saved;
+    std::unique_ptr<Saved> saved_;
+};
 
 /// Mesh data returned from tessellation.
 struct MeshData {
@@ -285,6 +307,7 @@ class OcctKernel {
     EdgeData wireframe(uint32_t id, double deflection);
     bool hasTriangulation(uint32_t id);
     MeshData meshShape(uint32_t id, double linearDeflection, double angularDeflection);
+    MeshData meshShapeForced(uint32_t id, double linearDeflection, double angularDeflection);
     MeshBatchData meshBatch(std::vector<uint32_t> ids, double linearDeflection,
                             double angularDeflection);
 
@@ -294,6 +317,10 @@ class OcctKernel {
     uint32_t importStl(const std::string& data);
     std::string exportStl(uint32_t id, double linearDeflection, bool ascii);
     std::string exportStlBinary(uint32_t id, double linearDeflection);
+    std::string exportStlAdvanced(uint32_t id, double linearDeflection, double angularDeflection,
+                                  bool ascii, bool force);
+    std::string exportStlBinaryAdvanced(uint32_t id, double linearDeflection,
+                                        double angularDeflection, bool force);
     uint32_t importStlBinary(const std::string& data);
     std::string toBREP(uint32_t id);
     uint32_t fromBREP(const std::string& data);
@@ -453,7 +480,7 @@ class OcctKernel {
     const TopoDS_Shape& get(uint32_t id) const;
     TopoDS_Shape normalizeSolidOrientation(const TopoDS_Shape& shape);
     MeshData buildMeshData(const TopoDS_Shape& shape, double linearDeflection,
-                           double angularDeflection, bool relative);
+                           double angularDeflection, bool relative, bool force = false);
 
     std::unordered_map<uint32_t, TopoDS_Shape> arena_;
     uint32_t nextId_ = 1;

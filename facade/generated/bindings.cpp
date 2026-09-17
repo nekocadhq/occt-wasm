@@ -287,6 +287,12 @@ EMSCRIPTEN_BINDINGS(occt_wasm) {
             return val::global("Uint8Array").new_(typed_memory_view(
                 bytes.size(), reinterpret_cast<const uint8_t*>(bytes.data())));
         })
+        .function("exportStlAdvanced", &OcctKernel::exportStlAdvanced)
+        .function("exportStlBinaryAdvanced", +[](OcctKernel& kernel, uint32_t id, double linearDeflection, double angularDeflection, bool force) {
+            const std::string bytes = kernel.exportStlBinaryAdvanced(id, linearDeflection, angularDeflection, force);
+            return val::global("Uint8Array").new_(typed_memory_view(
+                bytes.size(), reinterpret_cast<const uint8_t*>(bytes.data())));
+        })
         .function("importStlBinary", &OcctKernel::importStlBinary)
         .function("toBREP", &OcctKernel::toBREP)
         .function("fromBREP", &OcctKernel::fromBREP)
@@ -311,6 +317,7 @@ EMSCRIPTEN_BINDINGS(occt_wasm) {
         .function("tessellate", &OcctKernel::tessellate)
         .function("tessellateRelative", &OcctKernel::tessellateRelative)
         .function("meshShape", &OcctKernel::meshShape)
+        .function("meshShapeForced", &OcctKernel::meshShapeForced)
         .function("meshBatch", &OcctKernel::meshBatch)
         .function("wireframe", &OcctKernel::wireframe)
 

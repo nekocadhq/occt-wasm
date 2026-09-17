@@ -16,7 +16,7 @@
  */
 
 import * as Comlink from "comlink";
-import type { InitOptions, ShapeHandle, Mesh, BoundingBox, Vec3, TessellateOptions, ShapeType, EdgeData, MeshBatchData, ProjectionData, NurbsCurveData, CurvatureData, UVBounds, ShapeOrientation, PointClassification, SurfaceKind, CurveKind, ShapeQueryResult } from "./types.js";
+import type { InitOptions, ShapeHandle, Mesh, MeshShapeOptions, StlExportOptions, BoundingBox, Vec3, TessellateOptions, ShapeType, EdgeData, MeshBatchData, ProjectionData, NurbsCurveData, CurvatureData, UVBounds, ShapeOrientation, PointClassification, SurfaceKind, CurveKind, ShapeQueryResult } from "./types.js";
 import type { BooleanOp, TransitionMode } from "./types.js";
 
 /**
@@ -107,13 +107,16 @@ export interface OcctWorkerProxy {
     // Tessellation
     tessellate(shape: ShapeHandle, options?: TessellateOptions): Promise<Mesh>;
     wireframe(shape: ShapeHandle, deflection?: number): Promise<EdgeData>;
-    meshShape(shape: ShapeHandle, options?: TessellateOptions): Promise<Mesh>;
+    meshShape(shape: ShapeHandle, options?: MeshShapeOptions): Promise<Mesh>;
     meshBatch(shapes: ShapeHandle[], options?: TessellateOptions): Promise<MeshBatchData>;
 
     // I/O
     importStep(data: string | ArrayBuffer): Promise<ShapeHandle>;
     exportStep(shape: ShapeHandle): Promise<string>;
     importStl(data: string | ArrayBuffer | Uint8Array): Promise<ShapeHandle>;
+    exportStl(shape: ShapeHandle, options: StlExportOptions & { ascii: true }): Promise<string>;
+    exportStl(shape: ShapeHandle, options: StlExportOptions & { ascii?: false | undefined }): Promise<Uint8Array>;
+    exportStl(shape: ShapeHandle, options: StlExportOptions): Promise<string | Uint8Array>;
     exportStl(shape: ShapeHandle, linearDeflection?: number, ascii?: false): Promise<Uint8Array>;
     exportStl(shape: ShapeHandle, linearDeflection: number | undefined, ascii: true): Promise<string>;
     exportStl(shape: ShapeHandle, linearDeflection: number | undefined, ascii: boolean): Promise<string | Uint8Array>;
@@ -235,7 +238,7 @@ export class OcctWorker {
     extrude(shape: ShapeHandle, dx: number, dy: number, dz: number) { return this.#proxy.extrude(shape, dx, dy, dz); }
     fillet(solid: ShapeHandle, edges: ShapeHandle[], radius: number) { return this.#proxy.fillet(solid, edges, radius); }
     tessellate(shape: ShapeHandle, options?: TessellateOptions) { return this.#proxy.tessellate(shape, options); }
-    meshShape(shape: ShapeHandle, options?: TessellateOptions) { return this.#proxy.meshShape(shape, options); }
+    meshShape(shape: ShapeHandle, options?: MeshShapeOptions) { return this.#proxy.meshShape(shape, options); }
     meshBatch(shapes: ShapeHandle[], options?: TessellateOptions) { return this.#proxy.meshBatch(shapes, options); }
     wireframe(shape: ShapeHandle, deflection?: number) { return this.#proxy.wireframe(shape, deflection); }
     translate(shape: ShapeHandle, dx: number, dy: number, dz: number) { return this.#proxy.translate(shape, dx, dy, dz); }

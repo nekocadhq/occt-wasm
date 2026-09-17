@@ -4314,6 +4314,69 @@ return store(shape);",
         category: "io",
         return_type: ReturnType::Bytes,
     },
+    // exportStl with the angular deflection that it fixed at 0.5 rad, and with
+    // `force`, which meshes at the requested deflection even where the shape
+    // holds a finer triangulation and puts that triangulation back after the
+    // write. exportStl and exportStlBinary stay as they are: their Embind
+    // arity is load-bearing for callers that bind the raw kernel.
+    MethodSpec {
+        name: "exportStlAdvanced",
+        kind: MethodKind::CustomBody,
+        params: &[
+            FacadeParam::ShapeId("id"), FacadeParam::Double("linearDeflection"),
+            FacadeParam::Double("angularDeflection"), FacadeParam::Bool("ascii"),
+            FacadeParam::Bool("force"),
+        ],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "\
+const auto& shape = get(id);
+
+std::optional<MeshSnapshot> snapshot;
+if (force) {
+    snapshot.emplace(shape);
+}
+meshShapeAt(shape, linearDeflection, angularDeflection, false, force);
+
+StlAPI_Writer writer;
+writer.ASCIIMode() = ascii;
+
+const char* tmpPath = \"/tmp/export.stl\";
+if (!writer.Write(shape, tmpPath)) {
+    throw std::runtime_error(\"write failed\");
+}
+
+FILE* f = fopen(tmpPath, \"rb\");
+if (!f) {
+    throw std::runtime_error(\"cannot read temp file\");
+}
+fseek(f, 0, SEEK_END);
+long size = ftell(f);
+fseek(f, 0, SEEK_SET);
+std::string result(size, '\\0');
+fread(&result[0], 1, size, f);
+fclose(f);
+std::remove(tmpPath);
+
+return result;",
+        includes: &["StlAPI_Writer.hxx", "cstdio", "optional"],
+        category: "io",
+        return_type: ReturnType::String,
+    },
+    MethodSpec {
+        name: "exportStlBinaryAdvanced",
+        kind: MethodKind::CustomBodyRaw,
+        params: &[
+            FacadeParam::ShapeId("id"), FacadeParam::Double("linearDeflection"),
+            FacadeParam::Double("angularDeflection"), FacadeParam::Bool("force"),
+        ],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "return exportStlAdvanced(id, linearDeflection, angularDeflection, false, force);",
+        includes: &[],
+        category: "io",
+        return_type: ReturnType::Bytes,
+    },
     MethodSpec {
         name: "importStlBinary",
         kind: MethodKind::CustomBodyRaw,
@@ -4768,6 +4831,27 @@ return buildEvolution(maker, resultId, shape, inputFaceHashes, hashUpperBound);"
         occt_class: "",
         ctor_args: "",
         setup_code: "return tessellate(id, linearDeflection, angularDeflection);",
+        includes: &[],
+        category: "tessellate",
+        return_type: ReturnType::MeshData,
+    },
+    // meshShape at exactly the requested deflection. BRepMesh_IncrementalMesh
+    // keeps a triangulation that is finer than the one it is asked for, so a
+    // coarse mesh after a fine one came out fine. This one replaces it for the
+    // mesh it returns, then puts the triangulation of the shape back, so a
+    // display mesh of the same shape is not lost. meshShape stays as it is:
+    // its Embind arity is load-bearing for callers that bind the raw kernel.
+    MethodSpec {
+        name: "meshShapeForced",
+        kind: MethodKind::CustomBody,
+        params: &[
+            FacadeParam::ShapeId("id"),
+            FacadeParam::Double("linearDeflection"),
+            FacadeParam::Double("angularDeflection"),
+        ],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "return buildMeshData(get(id), linearDeflection, angularDeflection, false, true);",
         includes: &[],
         category: "tessellate",
         return_type: ReturnType::MeshData,

@@ -203,6 +203,8 @@ pub(crate) struct GeneratedFuncs {
     fn_export_stl: TypedFunc<(u32, f64, i32), i32>,
     fn_import_stl: TypedFunc<(i32, i32), u32>,
     fn_export_stl_binary: TypedFunc<(u32, f64), i32>,
+    fn_export_stl_advanced: TypedFunc<(u32, f64, f64, i32, i32), i32>,
+    fn_export_stl_binary_advanced: TypedFunc<(u32, f64, f64, i32), i32>,
     fn_import_stl_binary: TypedFunc<(i32, i32), u32>,
     fn_to_brep: TypedFunc<(u32,), i32>,
     fn_from_brep: TypedFunc<(i32, i32), u32>,
@@ -223,6 +225,7 @@ pub(crate) struct GeneratedFuncs {
     fn_tessellate: TypedFunc<(u32, f64, f64), i32>,
     fn_tessellate_relative: TypedFunc<(u32, f64, f64), i32>,
     fn_mesh_shape: TypedFunc<(u32, f64, f64), i32>,
+    fn_mesh_shape_forced: TypedFunc<(u32, f64, f64), i32>,
     fn_mesh_batch: TypedFunc<(i32, i32, f64, f64), i32>,
     fn_wireframe: TypedFunc<(u32, f64), i32>,
     fn_project_edges: TypedFunc<(u32, f64, f64, f64, f64, f64, f64, f64, f64, f64, i32), i32>,
@@ -438,6 +441,10 @@ impl GeneratedFuncs {
             fn_export_stl: instance.get_typed_func(&mut store, "occt_export_stl")?,
             fn_import_stl: instance.get_typed_func(&mut store, "occt_import_stl")?,
             fn_export_stl_binary: instance.get_typed_func(&mut store, "occt_export_stl_binary")?,
+            fn_export_stl_advanced: instance
+                .get_typed_func(&mut store, "occt_export_stl_advanced")?,
+            fn_export_stl_binary_advanced: instance
+                .get_typed_func(&mut store, "occt_export_stl_binary_advanced")?,
             fn_import_stl_binary: instance.get_typed_func(&mut store, "occt_import_stl_binary")?,
             fn_to_brep: instance.get_typed_func(&mut store, "occt_to_brep")?,
             fn_from_brep: instance.get_typed_func(&mut store, "occt_from_brep")?,
@@ -471,6 +478,7 @@ impl GeneratedFuncs {
             fn_tessellate_relative: instance
                 .get_typed_func(&mut store, "occt_tessellate_relative")?,
             fn_mesh_shape: instance.get_typed_func(&mut store, "occt_mesh_shape")?,
+            fn_mesh_shape_forced: instance.get_typed_func(&mut store, "occt_mesh_shape_forced")?,
             fn_mesh_batch: instance.get_typed_func(&mut store, "occt_mesh_batch")?,
             fn_wireframe: instance.get_typed_func(&mut store, "occt_wireframe")?,
             fn_project_edges: instance.get_typed_func(&mut store, "occt_project_edges")?,
@@ -3356,6 +3364,52 @@ impl crate::kernel::OcctKernel {
         self.read_bytes_result()
     }
 
+    pub fn export_stl_advanced(
+        &mut self,
+        id: ShapeHandle,
+        linear_deflection: f64,
+        angular_deflection: f64,
+        ascii: bool,
+        force: bool,
+    ) -> OcctResult<String> {
+        let len = self.generated.fn_export_stl_advanced.call(
+            &mut self.store,
+            (
+                id.0,
+                linear_deflection,
+                angular_deflection,
+                i32::from(ascii),
+                i32::from(force),
+            ),
+        )?;
+        if len < 0 {
+            return Err(self.read_last_error("export_stl_advanced"));
+        }
+        self.read_string_result()
+    }
+
+    pub fn export_stl_binary_advanced(
+        &mut self,
+        id: ShapeHandle,
+        linear_deflection: f64,
+        angular_deflection: f64,
+        force: bool,
+    ) -> OcctResult<Vec<u8>> {
+        let len = self.generated.fn_export_stl_binary_advanced.call(
+            &mut self.store,
+            (
+                id.0,
+                linear_deflection,
+                angular_deflection,
+                i32::from(force),
+            ),
+        )?;
+        if len < 0 {
+            return Err(self.read_last_error("export_stl_binary_advanced"));
+        }
+        self.read_bytes_result()
+    }
+
     pub fn import_stl_binary(&mut self, data: &[u8]) -> OcctResult<ShapeHandle> {
         let data_ptr = self.write_bytes(data)?;
         let data_len = data.len() as u32;
@@ -3916,6 +3970,22 @@ impl crate::kernel::OcctKernel {
         )?;
         if status < 0 {
             return Err(self.read_last_error("mesh_shape"));
+        }
+        self.read_mesh_result()
+    }
+
+    pub fn mesh_shape_forced(
+        &mut self,
+        id: ShapeHandle,
+        linear_deflection: f64,
+        angular_deflection: f64,
+    ) -> OcctResult<Mesh> {
+        let status = self.generated.fn_mesh_shape_forced.call(
+            &mut self.store,
+            (id.0, linear_deflection, angular_deflection),
+        )?;
+        if status < 0 {
+            return Err(self.read_last_error("mesh_shape_forced"));
         }
         self.read_mesh_result()
     }

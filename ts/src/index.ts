@@ -42,8 +42,10 @@ export {
     type ShapeQueryResult,
     type PointClassification,
     type ProjectionData,
+    type MeshShapeOptions,
     type ShapeHandle,
     type ShapeOrientation,
+    type StlExportOptions,
     type ShapeType,
     type SurfaceKind,
     type SweepAdvancedOptions,
@@ -83,10 +85,12 @@ import type {
     InitOptions,
     Mesh,
     MeshBatchData,
+    MeshShapeOptions,
     NurbsCurveData,
     PointClassification,
     ProjectionData,
     ShapeHandle,
+    StlExportOptions,
     ShapeQueryResult,
     ShapeOrientation,
     ShapeType,
@@ -1242,12 +1246,19 @@ export class OcctKernel {
         return wrap("hasTriangulation", () => this.#raw.hasTriangulation(shape));
     }
 
-    /** Tessellate with face group data (per-face triangle ranges + hashes). */
-    meshShape(shape: ShapeHandle, options?: TessellateOptions): Mesh {
+    /**
+     * Tessellate with face group data (per-face triangle ranges + hashes).
+     * Pass `force: true` to get the requested deflection even when the shape
+     * already holds a finer triangulation.
+     */
+    meshShape(shape: ShapeHandle, options?: MeshShapeOptions): Mesh {
         return wrap("meshShape", () => {
             const linDefl = options?.linearDeflection ?? 0.1;
             const angDefl = options?.angularDeflection ?? 0.5;
-            return this.#extractMeshWithFaceGroups(this.#raw.meshShape(shape, linDefl, angDefl));
+            const raw = options?.force
+                ? this.#raw.meshShapeForced(shape, linDefl, angDefl)
+                : this.#raw.meshShape(shape, linDefl, angDefl);
+            return this.#extractMeshWithFaceGroups(raw);
         });
     }
 
@@ -1329,16 +1340,30 @@ export class OcctKernel {
     /**
      * Export STL. Binary STL (the default) comes back as bytes; pass
      * `ascii: true` for the text format as a string.
+     *
+     * The options form also takes the angular deflection and `force`. The
+     * positional form keeps the angular deflection at 0.5 rad.
      */
+    exportStl(shape: ShapeHandle, options: StlExportOptions & { ascii: true }): string;
+    exportStl(shape: ShapeHandle, options: StlExportOptions & { ascii?: false | undefined }): Uint8Array;
+    exportStl(shape: ShapeHandle, options: StlExportOptions): string | Uint8Array;
     exportStl(shape: ShapeHandle, linearDeflection?: number, ascii?: false): Uint8Array;
     exportStl(shape: ShapeHandle, linearDeflection: number | undefined, ascii: true): string;
     exportStl(shape: ShapeHandle, linearDeflection: number | undefined, ascii: boolean): string | Uint8Array;
-    exportStl(shape: ShapeHandle, linearDeflection = 0.1, ascii = false): string | Uint8Array {
-        return wrap("exportStl", () =>
-            ascii
-                ? this.#raw.exportStl(shape, linearDeflection, true)
-                : this.#raw.exportStlBinary(shape, linearDeflection),
-        );
+    exportStl(shape: ShapeHandle, options: number | StlExportOptions = 0.1, ascii = false): string | Uint8Array {
+        return wrap("exportStl", () => {
+            if (typeof options === "number") {
+                return ascii
+                    ? this.#raw.exportStl(shape, options, true)
+                    : this.#raw.exportStlBinary(shape, options);
+            }
+            const linDefl = options.linearDeflection ?? 0.1;
+            const angDefl = options.angularDeflection ?? 0.5;
+            const force = options.force ?? false;
+            return options.ascii
+                ? this.#raw.exportStlAdvanced(shape, linDefl, angDefl, true, force)
+                : this.#raw.exportStlBinaryAdvanced(shape, linDefl, angDefl, force);
+        });
     }
 
     toBREP(shape: ShapeHandle): string {
