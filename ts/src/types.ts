@@ -33,6 +33,23 @@ export interface BoundingBox {
     zmax: number;
 }
 
+/** Options for `OcctKernel.getBoundingBox`. */
+export interface BoundingBoxOptions {
+    /**
+     * `true` (the default) finds each surface's exact extrema, so the box is
+     * the same whether or not the shape has been tessellated. `false` returns
+     * a loose box from analytic extents and BSpline control hulls plus the
+     * shape tolerance; it always contains the precise box and skips the
+     * extremum search that makes unmeshed BSpline geometry slow.
+     */
+    precise?: boolean | undefined;
+    /**
+     * Bound the existing triangulation instead of the surfaces when the shape
+     * has one. Faster, but only as tight as that mesh. Default: `false`.
+     */
+    useTriangulation?: boolean | undefined;
+}
+
 /** 3D point or direction vector. */
 export interface Vec3 {
     x: number;
@@ -123,16 +140,25 @@ export interface Location {
     rz?: number | undefined;
 }
 
-/** Options for adding a root shape to an XCAF document. */
-export interface AddShapeOptions {
+/** Name and color to put on an XCAF label. */
+export interface LabelOptions {
     /** Display name for the label. */
     name?: string | undefined;
     /** RGB color to assign to the shape label. */
     color?: Color3 | undefined;
 }
 
+/** Options for adding a root shape to an XCAF document. */
+export interface AddShapeOptions extends LabelOptions {
+    /**
+     * Add a compound as an assembly of components rather than as one part.
+     * See `XCAFDocument.addShape`.
+     */
+    assembly?: boolean | undefined;
+}
+
 /** Options for adding a child component to an assembly label. */
-export interface AddChildOptions extends AddShapeOptions {
+export interface AddChildOptions extends LabelOptions {
     /** Placement transform relative to the parent. */
     location?: Location | undefined;
 }
@@ -149,7 +175,11 @@ export interface LabelInfo {
     color: Color3;
     /** True if this label is an assembly (has child components). */
     isAssembly: boolean;
-    /** True if this label is a component reference. */
+    /**
+     * True if this label is a component: a placed reference to a part or
+     * sub-assembly. Resolve it with `XCAFDocument.getReferredLabel` to reach
+     * that label's name, sub-shapes and children.
+     */
     isComponent: boolean;
     /** Associated shape handle, or null if the label has no shape. */
     shapeHandle: ShapeHandle | null;

@@ -5,7 +5,7 @@ This is the NekoCAD fork of [andymai/occt-wasm](https://github.com/andymai/occt-
 ## Branches and versions
 
 - `main` follows upstream. `nekocad-build` holds the NekoCAD changes on top of it.
-- A NekoCAD version is a prerelease of the upstream version it is built on: `5.0.0-nekocad.1`, then `5.0.0-nekocad.2`. After a merge of upstream 5.1.0, the next one is `5.1.0-nekocad.1`.
+- A NekoCAD version is a prerelease of the upstream version it is built on: `5.1.1-nekocad.1`, then `5.1.1-nekocad.2`. After a merge of upstream 5.2.0, the next one is `5.2.0-nekocad.1`.
 - The `occt` submodule is on `nekocadhq/OCCT`. A new OCCT commit also needs a new builder image (see below).
 
 ## Build from scratch
@@ -25,19 +25,19 @@ cargo xtask build-wasi --release  # after a facade change, so the crate stale-ch
 
 ## Make a release
 
-1. Set the version: `cd ts && npm version 5.0.0-nekocad.N --no-git-tag-version`.
+1. Set the version: `cd ts && npm version 5.1.1-nekocad.N --no-git-tag-version`.
 2. Build and test as above, then `cd ts && npm pack` and check the tarball.
-3. Commit the version, tag `v5.0.0-nekocad.N`, and push the branch and the tag.
+3. Commit the version, tag `v5.1.1-nekocad.N`, and push the branch and the tag.
 4. Publish from `ts/`, logged in to npm as a member of `@nekocad`:
 
    ```bash
-   cd ts && npm publish nekocad-occt-wasm-5.0.0-nekocad.N.tgz --access public --tag nekocad
+   cd ts && npm publish nekocad-occt-wasm-5.1.1-nekocad.N.tgz --access public --tag nekocad
    ```
 
    `--tag nekocad` keeps `latest` off a prerelease version.
 
 5. In the NekoCAD platform repository:
-   `pnpm --dir packages/kernel add occt-wasm@npm:@nekocad/occt-wasm@5.0.0-nekocad.N`.
+   `pnpm --dir packages/kernel add occt-wasm@npm:@nekocad/occt-wasm@5.1.1-nekocad.N`.
    `pnpm-workspace.yaml` excludes `@nekocad/*` from the release age wait, so a new version installs at once.
 
 The npm publish, release-please, and crates.io workflows of upstream only run in `andymai/occt-wasm`, so pushing here publishes nothing.

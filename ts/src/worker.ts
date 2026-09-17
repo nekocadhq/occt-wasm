@@ -16,7 +16,7 @@
  */
 
 import * as Comlink from "comlink";
-import type { InitOptions, ShapeHandle, Mesh, MeshShapeOptions, StlExportOptions, BoundingBox, Vec3, TessellateOptions, ShapeType, EdgeData, MeshBatchData, ProjectionData, NurbsCurveData, CurvatureData, UVBounds, ShapeOrientation, PointClassification, SurfaceKind, CurveKind, ShapeQueryResult } from "./types.js";
+import type { InitOptions, ShapeHandle, Mesh, MeshShapeOptions, StlExportOptions, BoundingBox, BoundingBoxOptions, Vec3, TessellateOptions, ShapeType, EdgeData, MeshBatchData, ProjectionData, NurbsCurveData, CurvatureData, UVBounds, ShapeOrientation, PointClassification, SurfaceKind, CurveKind, ShapeQueryResult } from "./types.js";
 import type { BooleanOp, TransitionMode } from "./types.js";
 
 /**
@@ -126,7 +126,7 @@ export interface OcctWorkerProxy {
     loadCached(brep: string): Promise<ShapeHandle>;
 
     // Query
-    getBoundingBox(shape: ShapeHandle, useTriangulation?: boolean): Promise<BoundingBox>;
+    getBoundingBox(shape: ShapeHandle, options?: boolean | BoundingBoxOptions): Promise<BoundingBox>;
     getVolume(shape: ShapeHandle): Promise<number>;
     getSurfaceArea(shape: ShapeHandle): Promise<number>;
     getLength(shape: ShapeHandle): Promise<number>;
@@ -247,7 +247,7 @@ export class OcctWorker {
     exportStep(shape: ShapeHandle) { return this.#proxy.exportStep(shape); }
     cacheStep(data: string | ArrayBuffer) { return this.#proxy.cacheStep(data); }
     loadCached(brep: string) { return this.#proxy.loadCached(brep); }
-    getBoundingBox(shape: ShapeHandle, useTriangulation?: boolean) { return this.#proxy.getBoundingBox(shape, useTriangulation); }
+    getBoundingBox(shape: ShapeHandle, options?: boolean | BoundingBoxOptions) { return this.#proxy.getBoundingBox(shape, options as BoundingBoxOptions | undefined); }
     getVolume(shape: ShapeHandle) { return this.#proxy.getVolume(shape); }
     getSurfaceArea(shape: ShapeHandle) { return this.#proxy.getSurfaceArea(shape); }
     getShapeType(shape: ShapeHandle) { return this.#proxy.getShapeType(shape); }

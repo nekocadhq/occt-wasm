@@ -51,6 +51,17 @@ TDF_Label lookupLabel(const std::map<int, TDF_Label>& registry, int labelId) {
     return it->second;
 }
 
+int OcctKernel::registerLabel(XCAFDocRecord& record, const TDF_Label& label) {
+    auto known = record.labelIds.find(label);
+    if (known != record.labelIds.end()) {
+        return known->second;
+    }
+    int facadeId = record.nextLabelId++;
+    record.labelRegistry[facadeId] = label;
+    record.labelIds.emplace(label, facadeId);
+    return facadeId;
+}
+
 // --- Mesh helpers (used by generated tessellation and STL methods) ---
 
 void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angularDeflection,
@@ -320,6 +331,10 @@ MeshData OcctKernel::buildMeshData(const TopoDS_Shape& shape, double linearDefle
             }
         }
 
+        // Triangulation normals are surface normals: ComputeNormals ignores the
+        // face orientation, and the Poly_Triangulation is shared by every face
+        // using this surface, so the flip must happen here, not in the cache.
+        bool isReversed = (face.Orientation() == TopAbs_REVERSED);
         if (!tri->HasNormals()) {
             BRepLib_ToolTriangulatedShape::ComputeNormals(face, tri);
         }
@@ -333,6 +348,9 @@ MeshData OcctKernel::buildMeshData(const TopoDS_Shape& shape, double linearDefle
                     d = gp_Dir(nv.x(), nv.y(), nv.z());
                 }
             }
+            if (isReversed) {
+                d.Reverse();
+            }
             if (!identityLoc) {
                 d = d.Transformed(trsf);
             }
@@ -342,7 +360,6 @@ MeshData OcctKernel::buildMeshData(const TopoDS_Shape& shape, double linearDefle
             result.normals[base + 2] = static_cast<float>(d.Z());
         }
 
-        bool isReversed = (face.Orientation() != TopAbs_FORWARD);
         for (int t = 1; t <= nbTri; t++) {
             const auto& triangle = tri->Triangle(t);
             int n1 = triangle.Value(1);

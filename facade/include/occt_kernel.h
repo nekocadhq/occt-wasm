@@ -330,6 +330,7 @@ class OcctKernel {
 
     // --- Query / Measure ---
     BBoxData getBoundingBox(uint32_t id, bool useTriangulation);
+    BBoxData getBoundingBoxLoose(uint32_t id, bool useTriangulation);
     double getVolume(uint32_t id);
     double getSurfaceArea(uint32_t id);
     double getLength(uint32_t id);
@@ -431,6 +432,7 @@ class OcctKernel {
     uint32_t xcafNewDocument();
     void xcafClose(uint32_t docId);
     int xcafAddShape(uint32_t docId, uint32_t shapeId);
+    int xcafAddAssembly(uint32_t docId, uint32_t shapeId);
     int xcafAddComponent(uint32_t docId, int parentLabelId, uint32_t shapeId, double tx, double ty,
                          double tz, double rx, double ry, double rz);
     void xcafSetColor(uint32_t docId, int labelId, double r, double g, double b);
@@ -438,6 +440,10 @@ class OcctKernel {
     XCAFLabelInfo xcafGetLabelInfo(uint32_t docId, int labelId);
     std::vector<int> xcafGetChildLabels(uint32_t docId, int parentLabelId);
     std::vector<int> xcafGetRootLabels(uint32_t docId);
+    int xcafGetReferredLabel(uint32_t docId, int labelId);
+    std::vector<double> xcafGetLabelLocation(uint32_t docId, int labelId);
+    std::vector<int> xcafGetSubShapeLabels(uint32_t docId, int labelId);
+    int xcafAddSubShape(uint32_t docId, int labelId, uint32_t shapeId);
     std::string xcafExportSTEP(uint32_t docId);
     uint32_t xcafImportSTEP(const std::string& stepData);
     std::string xcafExportGLTF(uint32_t docId, double linDeflection, double angDeflection);
@@ -490,8 +496,12 @@ class OcctKernel {
     struct XCAFDocRecord {
         Handle(TDocStd_Document) doc;
         std::map<int, TDF_Label> labelRegistry;
+        std::unordered_map<TDF_Label, int> labelIds;
         int nextLabelId = 1;
     };
+    // One facade ID per TDF_Label for the document's lifetime, so repeated
+    // traversals hand back the same tags instead of growing the registry.
+    static int registerLabel(XCAFDocRecord& record, const TDF_Label& label);
     std::map<uint32_t, XCAFDocRecord> xcafDocs_;
     uint32_t nextXcafId_ = 1;
 };

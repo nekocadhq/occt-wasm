@@ -143,6 +143,7 @@
 #include <TopoDS_Wire.hxx>
 #include <XCAFApp_Application.hxx>
 #include <XCAFDoc_ColorTool.hxx>
+#include <XCAFDoc_ColorType.hxx>
 #include <XCAFDoc_DocumentTool.hxx>
 #include <XCAFDoc_ShapeTool.hxx>
 #include <cmath>
@@ -2118,6 +2119,22 @@ BBoxData OcctKernel::getBoundingBox(uint32_t id, bool useTriangulation) {
     }
 }
 
+BBoxData OcctKernel::getBoundingBoxLoose(uint32_t id, bool useTriangulation) {
+    try {
+        const auto& shape = get(id);
+        Bnd_Box box;
+        BRepBndLib::Add(shape, box, useTriangulation);
+        if (box.IsVoid()) {
+            throw std::runtime_error("getBoundingBoxLoose: shape has no geometry");
+        }
+        BBoxData result{};
+        box.Get(result.xmin, result.ymin, result.zmin, result.xmax, result.ymax, result.zmax);
+        return result;
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("getBoundingBoxLoose: ") + e.what());
+    }
+}
+
 double OcctKernel::getVolume(uint32_t id) {
     try {
         const auto& shape = get(id);
@@ -3892,6 +3909,10 @@ MeshBatchData OcctKernel::meshBatch(std::vector<uint32_t> ids, double linearDefl
                 }
             }
         
+            // Triangulation normals are surface normals: ComputeNormals ignores the
+            // face orientation, and the Poly_Triangulation is shared by every face
+            // using this surface, so the flip must happen here, not in the cache.
+            bool isReversed = (fc.face.Orientation() == TopAbs_REVERSED);
             if (!tri->HasNormals()) {
                 BRepLib_ToolTriangulatedShape::ComputeNormals(fc.face, tri);
             }
@@ -3905,6 +3926,9 @@ MeshBatchData OcctKernel::meshBatch(std::vector<uint32_t> ids, double linearDefl
                         d = gp_Dir(nv.x(), nv.y(), nv.z());
                     }
                 }
+                if (isReversed) {
+                    d.Reverse();
+                }
                 if (!identityTrsf) {
                     d = d.Transformed(trsf);
                 }
@@ -3914,7 +3938,6 @@ MeshBatchData OcctKernel::meshBatch(std::vector<uint32_t> ids, double linearDefl
                 result.normals[base + 2] = static_cast<float>(d.Z());
             }
         
-            bool isReversed = (fc.face.Orientation() != TopAbs_FORWARD);
             for (int t = 1; t <= nbTri; t++) {
                 const auto& triangle = tri->Triangle(t);
                 int n1 = triangle.Value(1);
@@ -4117,7 +4140,7 @@ uint32_t OcctKernel::xcafNewDocument() {
         Handle(TDocStd_Document) doc;
         app->NewDocument("BinXCAF", doc);
         uint32_t id = ++nextXcafId_; // pre-increment; default init may be 0 in WASM
-        xcafDocs_[id] = XCAFDocRecord{doc, {}, 1};
+        xcafDocs_[id] = XCAFDocRecord{doc, {}, {}, 1};
         return id;
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("xcafNewDocument: ") + e.what());
@@ -4157,11 +4180,31 @@ int OcctKernel::xcafAddShape(uint32_t docId, uint32_t shapeId) {
         // as one part keeps per-label colors attached to its geometry.
         TDF_Label label = shapeTool->AddShape(get(shapeId), Standard_False);
         
-        int facadeId = it->second.nextLabelId++;
-        it->second.labelRegistry[facadeId] = label;
+        int facadeId = registerLabel(it->second, label);
         return facadeId;
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("xcafAddShape: ") + e.what());
+    }
+}
+
+int OcctKernel::xcafAddAssembly(uint32_t docId, uint32_t shapeId) {
+    try {
+        auto it = xcafDocs_.find(docId);
+        if (it == xcafDocs_.end())
+            throw std::runtime_error("xcafAddAssembly: invalid document ID");
+        
+        const TopoDS_Shape& shape = get(shapeId);
+        if (shape.ShapeType() != TopAbs_COMPOUND)
+            throw std::runtime_error("xcafAddAssembly: shape must be a compound");
+        
+        Handle(XCAFDoc_ShapeTool) shapeTool =
+            XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
+        TDF_Label label = shapeTool->AddShape(shape, Standard_True);
+        
+        int facadeId = registerLabel(it->second, label);
+        return facadeId;
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("xcafAddAssembly: ") + e.what());
     }
 }
 
@@ -4175,6 +4218,66 @@ int OcctKernel::xcafAddComponent(uint32_t docId, int parentLabelId, uint32_t sha
             XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
         
         TDF_Label parentLabel = lookupLabel(it->second.labelRegistry, parentLabelId);
+        const TopoDS_Shape& child = get(shapeId);
+        if (shapeTool->IsReference(parentLabel))
+            throw std::runtime_error("xcafAddComponent: parent must be a part or an assembly, not a component");
+        
+        // XDE has no part that also has components: an assembly's shape is the
+        // compound of its components, so a part given children would lose its own
+        // geometry on export. Turn it into an assembly whose first component is the
+        // geometry it had, at identity, carrying the part's name and color. The
+        // registered shape keeps its facade ID; the new part label is the prototype
+        // behind that component.
+        if (!shapeTool->IsAssembly(parentLabel) && shapeTool->IsSimpleShape(parentLabel)) {
+            TopoDS_Shape own = shapeTool->GetShape(parentLabel);
+            bool empty = own.IsNull() || (own.ShapeType() == TopAbs_COMPOUND && own.NbChildren() == 0);
+            if (!empty) {
+                TDF_Label partLabel = shapeTool->NewShape();
+                shapeTool->SetShape(partLabel, own);
+                Handle(XCAFDoc_ColorTool) colorTool =
+                    XCAFDoc_DocumentTool::ColorTool(it->second.doc->Main());
+                const XCAFDoc_ColorType colorTypes[] = {XCAFDoc_ColorGen, XCAFDoc_ColorSurf,
+                                                        XCAFDoc_ColorCurv};
+                auto copyColors = [&](const TDF_Label& from, const TDF_Label& to) {
+                    Quantity_Color color;
+                    for (XCAFDoc_ColorType type : colorTypes) {
+                        if (colorTool->GetColor(from, type, color))
+                            colorTool->SetColor(to, color, type);
+                    }
+                };
+                copyColors(parentLabel, partLabel);
+                // Sub-shape labels live under the part; re-register them under the new
+                // prototype so their names, colors and facade tags follow the geometry.
+                NCollection_Sequence<TDF_Label> subs;
+                XCAFDoc_ShapeTool::GetSubShapes(parentLabel, subs);
+                for (int i = 1; i <= subs.Length(); ++i) {
+                    TDF_Label oldSub = subs.Value(i);
+                    TopoDS_Shape subShape;
+                    TDF_Label newSub;
+                    if (!XCAFDoc_ShapeTool::GetShape(oldSub, subShape) ||
+                        !shapeTool->AddSubShape(partLabel, subShape, newSub) || newSub.IsNull())
+                        continue;
+                    Handle(TDataStd_Name) subName;
+                    if (oldSub.FindAttribute(TDataStd_Name::GetID(), subName))
+                        TDataStd_Name::Set(newSub, subName->Get());
+                    copyColors(oldSub, newSub);
+                    auto known = it->second.labelIds.find(oldSub);
+                    if (known != it->second.labelIds.end()) {
+                        int tagId = known->second;
+                        it->second.labelIds.erase(known);
+                        it->second.labelIds.emplace(newSub, tagId);
+                        it->second.labelRegistry[tagId] = newSub;
+                    }
+                    oldSub.ForgetAllAttributes();
+                }
+                TDF_Label ownComp = shapeTool->AddComponent(parentLabel, partLabel, TopLoc_Location());
+                Handle(TDataStd_Name) nameAttr;
+                if (parentLabel.FindAttribute(TDataStd_Name::GetID(), nameAttr)) {
+                    TDataStd_Name::Set(partLabel, nameAttr->Get());
+                    TDataStd_Name::Set(ownComp, nameAttr->Get());
+                }
+            }
+        }
         
         // Build location transform (Euler angles in radians)
         gp_Trsf trsf;
@@ -4189,11 +4292,13 @@ int OcctKernel::xcafAddComponent(uint32_t docId, int parentLabelId, uint32_t sha
         TopLoc_Location loc(trsf);
         
         // First add the shape as a standalone label, then add as component with location
-        TDF_Label shapeLabel = shapeTool->AddShape(get(shapeId));
+        TDF_Label shapeLabel = shapeTool->AddShape(child);
         TDF_Label compLabel = shapeTool->AddComponent(parentLabel, shapeLabel, loc);
+        if (compLabel.IsNull())
+            throw std::runtime_error("xcafAddComponent: parent must be a part or an assembly, not a component");
+        shapeTool->UpdateAssemblies();
         
-        int facadeId = it->second.nextLabelId++;
-        it->second.labelRegistry[facadeId] = compLabel;
+        int facadeId = registerLabel(it->second, compLabel);
         return facadeId;
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("xcafAddComponent: ") + e.what());
@@ -4293,8 +4398,7 @@ std::vector<int> OcctKernel::xcafGetChildLabels(uint32_t docId, int parentLabelI
         
         std::vector<int> ids;
         for (int i = 1; i <= children.Length(); ++i) {
-            int facadeId = it->second.nextLabelId++;
-            it->second.labelRegistry[facadeId] = children.Value(i);
+            int facadeId = registerLabel(it->second, children.Value(i));
             ids.push_back(facadeId);
         }
         return ids;
@@ -4317,13 +4421,98 @@ std::vector<int> OcctKernel::xcafGetRootLabels(uint32_t docId) {
         
         std::vector<int> ids;
         for (int i = 1; i <= roots.Length(); ++i) {
-            int facadeId = it->second.nextLabelId++;
-            it->second.labelRegistry[facadeId] = roots.Value(i);
+            int facadeId = registerLabel(it->second, roots.Value(i));
             ids.push_back(facadeId);
         }
         return ids;
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("xcafGetRootLabels: ") + e.what());
+    }
+}
+
+int OcctKernel::xcafGetReferredLabel(uint32_t docId, int labelId) {
+    try {
+        auto it = xcafDocs_.find(docId);
+        if (it == xcafDocs_.end())
+            throw std::runtime_error("xcafGetReferredLabel: invalid document ID");
+        
+        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+        
+        TDF_Label referred;
+        if (!XCAFDoc_ShapeTool::GetReferredShape(label, referred) || referred.IsNull())
+            return 0;
+        
+        int facadeId = registerLabel(it->second, referred);
+        return facadeId;
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("xcafGetReferredLabel: ") + e.what());
+    }
+}
+
+std::vector<double> OcctKernel::xcafGetLabelLocation(uint32_t docId, int labelId) {
+    try {
+        auto it = xcafDocs_.find(docId);
+        if (it == xcafDocs_.end())
+            throw std::runtime_error("xcafGetLabelLocation: invalid document ID");
+        
+        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+        
+        const gp_Trsf& trsf = XCAFDoc_ShapeTool::GetLocation(label).Transformation();
+        std::vector<double> matrix(12);
+        for (int row = 1; row <= 3; ++row) {
+            for (int col = 1; col <= 4; ++col) {
+                matrix[static_cast<size_t>((row - 1) * 4 + (col - 1))] = trsf.Value(row, col);
+            }
+        }
+        return matrix;
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("xcafGetLabelLocation: ") + e.what());
+    }
+}
+
+std::vector<int> OcctKernel::xcafGetSubShapeLabels(uint32_t docId, int labelId) {
+    try {
+        auto it = xcafDocs_.find(docId);
+        if (it == xcafDocs_.end())
+            throw std::runtime_error("xcafGetSubShapeLabels: invalid document ID");
+        
+        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+        
+        NCollection_Sequence<TDF_Label> subs;
+        XCAFDoc_ShapeTool::GetSubShapes(label, subs);
+        
+        std::vector<int> ids;
+        for (int i = 1; i <= subs.Length(); ++i) {
+            int facadeId = registerLabel(it->second, subs.Value(i));
+            ids.push_back(facadeId);
+        }
+        return ids;
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("xcafGetSubShapeLabels: ") + e.what());
+    }
+}
+
+int OcctKernel::xcafAddSubShape(uint32_t docId, int labelId, uint32_t shapeId) {
+    try {
+        auto it = xcafDocs_.find(docId);
+        if (it == xcafDocs_.end())
+            throw std::runtime_error("xcafAddSubShape: invalid document ID");
+        
+        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+        
+        Handle(XCAFDoc_ShapeTool) shapeTool =
+            XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
+        
+        TDF_Label subLabel;
+        if (!shapeTool->AddSubShape(label, get(shapeId), subLabel) || subLabel.IsNull()) {
+            throw std::runtime_error(
+                "xcafAddSubShape: label must be a top-level part and the shape one of its sub-shapes");
+        }
+        
+        int facadeId = registerLabel(it->second, subLabel);
+        return facadeId;
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("xcafAddSubShape: ") + e.what());
     }
 }
 
@@ -4396,7 +4585,7 @@ uint32_t OcctKernel::xcafImportSTEP(const std::string& stepData) {
         }
         
         uint32_t id = ++nextXcafId_;
-        xcafDocs_[id] = XCAFDocRecord{doc, {}, 1};
+        xcafDocs_[id] = XCAFDocRecord{doc, {}, {}, 1};
         return id;
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("xcafImportSTEP: ") + e.what());
