@@ -38,6 +38,8 @@ jobs:
   publish:
     name: cargo publish
     runs-on: ubuntu-latest
+    # The nekocadhq fork does not publish the crate.
+    if: github.repository == 'andymai/occt-wasm'
     environment: crates-io
     permissions:
       contents: read

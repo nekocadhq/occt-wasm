@@ -9,7 +9,7 @@
 # Rebuild when: OCCT submodule, Dockerfile.builder, cmake flags, or emsdk version change.
 set -euo pipefail
 
-IMAGE="ghcr.io/andymai/occt-wasm-builder"
+IMAGE="ghcr.io/nekocadhq/occt-wasm-builder"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
@@ -46,7 +46,7 @@ fi
 
 # Login to GHCR via gh CLI token
 echo "Logging into GHCR via gh CLI..."
-gh auth token | $DOCKER login ghcr.io -u andymai --password-stdin
+gh auth token | $DOCKER login ghcr.io -u "$(gh api user --jq .login)" --password-stdin
 
 $DOCKER push "${IMAGE}:${TAG}"
 $DOCKER push "${IMAGE}:latest"

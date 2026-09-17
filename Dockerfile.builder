@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Pre-built OCCT static libs for CI. Push to ghcr.io/andymai/occt-wasm-builder.
+# Pre-built OCCT static libs for CI. Push to ghcr.io/nekocadhq/occt-wasm-builder.
 # Rebuild only when OCCT submodule, emsdk version, or cmake flags change.
 
 FROM emscripten/emsdk:5.0.3

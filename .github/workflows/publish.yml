@@ -17,6 +17,8 @@ concurrency:
 
 jobs:
   build:
+    # The nekocadhq fork does not publish to npm: its GitHub releases carry a tarball.
+    if: github.repository == 'andymai/occt-wasm'
     uses: ./.github/workflows/build-wasm.yml
     with:
       release: true

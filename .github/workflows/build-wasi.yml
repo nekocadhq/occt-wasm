@@ -3,7 +3,7 @@ name: Build WASI
 # Refreshes the embedded `crate/src/occt-wasm.wasm.br` shipped to crates.io and
 # fails when the committed bytes drift from what the current sources produce.
 #
-# Uses the existing `ghcr.io/andymai/occt-wasm-builder` image — same emcc
+# Uses the existing `ghcr.io/nekocadhq/occt-wasm-builder` image — same emcc
 # toolchain + pre-built OCCT static libs as the npm build. xtask::build_wasi
 # compiles the C-ABI facade and links with `em++ -sSTANDALONE_WASM=1`, so the
 # only thing this workflow does on top is run the build, brotli, and diff.
@@ -42,7 +42,7 @@ jobs:
     name: WASI build + stale-check
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/andymai/occt-wasm-builder:latest
+      image: ghcr.io/nekocadhq/occt-wasm-builder:latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
