@@ -23,9 +23,16 @@ enum Cli {
         /// Optimize for size (-Oz) instead of speed (-O3); requires --release
         #[arg(long)]
         size: bool,
+        /// Build the threaded variant (pthreads) → dist/occt-wasm-mt.{js,wasm}
+        #[arg(long)]
+        threads: bool,
     },
     /// Build only OCCT static libraries (Milestone 0)
-    BuildOcct,
+    BuildOcct {
+        /// Build the pthreads libs into occt/build-mt instead of occt/build
+        #[arg(long)]
+        threads: bool,
+    },
     /// Build WASI target for Rust crate (requires wasi-sdk)
     BuildWasi {
         /// Enable release optimizations (-O3 + wasm-opt)
@@ -48,12 +55,24 @@ enum Cli {
     },
 }
 
+const fn threads_of(threads: bool) -> build::Threads {
+    if threads {
+        build::Threads::On
+    } else {
+        build::Threads::Off
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli {
-        Cli::Build { release, size } => build::build(release, size),
-        Cli::BuildOcct => build::build_occt(),
+        Cli::Build {
+            release,
+            size,
+            threads,
+        } => build::build(release, size, threads_of(threads)),
+        Cli::BuildOcct { threads } => build::build_occt(threads_of(threads)),
         Cli::BuildWasi { release } => build_wasi::build_wasi(release),
         Cli::Codegen => codegen::run::run(),
         Cli::Clean { keep_generated } => build::clean(keep_generated),

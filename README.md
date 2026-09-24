@@ -136,6 +136,37 @@ await OcctKernel.init({ wasm: binary });
 await OcctKernel.init({ wasm: new Uint8Array(binary) });
 ```
 
+## Threads
+
+The package holds two builds. `occt-wasm.wasm` runs on one thread and runs everywhere. `occt-wasm-mt.wasm` runs OCCT's parallel algorithms (meshing, booleans) on a pool of Web Workers, one fewer than the logical processors, up to 10.
+
+The threaded build needs `SharedArrayBuffer`, which a browser gives only to a [cross-origin isolated](https://developer.mozilla.org/en-US/docs/Web/API/Window/crossOriginIsolated) page. Serve the page **and each script it loads** with:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+The Web Workers load the glue script again, and the browser blocks a Worker whose script lacks the COEP header. `init()` then fails after 20 s with an error that names the header.
+
+```typescript check
+import { OcctKernel } from "occt-wasm";
+
+// Default "auto": the threaded build on an isolated page (and in Node.js),
+// the single-threaded build elsewhere.
+const kernel = await OcctKernel.init();
+console.log(kernel.threaded);
+
+// Force one build. `threads: true` fails without SharedArrayBuffer.
+await OcctKernel.init({ threads: false });
+
+// Explicit binaries: `wasm` for the single-threaded build, `wasmThreaded` for
+// the threaded one. With only `wasm`, "auto" keeps the single-threaded build.
+await OcctKernel.init({ wasm: "/assets/occt-wasm.wasm", wasmThreaded: "/assets/occt-wasm-mt.wasm" });
+```
+
+Measured on an M4 Max in Node.js, release builds: the gridfinity `cutAll` benchmark takes 46 ms instead of 64 ms, `fuseAll` 25 ms instead of 34 ms, and meshing a plate with 144 holes (73k triangles) 1.8x less time. Small jobs gain nothing, and a mesh of a few faces is slightly slower.
+
 ## Error Handling
 
 All errors are instances of `OcctError` with a structured `code` field for programmatic handling:
@@ -313,6 +344,9 @@ export default defineConfig({
   build: {
     target: "esnext", // Required for WASM features
   },
+  worker: {
+    format: "es", // The threaded glue starts its Workers from itself, with top-level await
+  },
 });
 ```
 
@@ -422,8 +456,9 @@ git clone --recurse-submodules https://github.com/andymai/occt-wasm
 cd occt-wasm
 npm install && cd ts && npm install && cd ..
 
-cargo xtask build       # Build OCCT + facade -> WASM
-cargo xtask test        # Run tests
+cargo xtask build            # Build OCCT + facade -> WASM
+cargo xtask build --threads  # The threaded build (its own OCCT libs in occt/build-mt)
+cargo xtask test             # Run tests; OCCT_WASM_THREADS=1 runs them on the threaded build
 
 # View the Three.js example
 node scripts/static-server.mjs
@@ -461,7 +496,7 @@ These are upstream OCCT V8.0.1 issues, not occt-wasm bugs:
 
 - **IGES** -- TKDEIGES excluded from link; no IGES import/export
 - **Zero-length extrusion** -- WASM exception escapes JS catch boundary (1 test skip)
-- **Single WASM thread** -- each kernel instance is single-threaded; use `OcctWorker` (see above) to move work off the main thread
+- **Threads need isolation** -- only a cross-origin isolated page gets the threaded build (see [Threads](#threads)); elsewhere each kernel instance is single-threaded, and `OcctWorker` (see above) moves the work off the main thread
 
 These will be addressed as upstream OCCT and browser support improve.
 

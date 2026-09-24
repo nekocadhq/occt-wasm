@@ -9,10 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ccache \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable ccache for C++ compilation
-ENV CCACHE_DIR=/cache/ccache
-ENV CC="ccache gcc"
-ENV CXX="ccache g++"
+# ccache for the Emscripten compiles. emcmake replaces the compiler with emcc,
+# so CC=ccache would never apply; Emscripten's own wrapper puts ccache in front
+# of the clang that emcc runs. xtask sets the same when ccache is installed.
+ENV EM_COMPILER_WRAPPER=ccache \
+    CCACHE_DIR=/cache/ccache \
+    CCACHE_BASEDIR=/workspace \
+    CCACHE_NOHASHDIR=1
 
 # --- Layer 2: Rust toolchain (changes only on toolchain bump) ---
 COPY rust-toolchain.toml /tmp/rust-toolchain.toml
@@ -43,33 +46,43 @@ RUN npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts \
 COPY scripts/fetch-rapidjson.sh scripts/
 RUN bash scripts/fetch-rapidjson.sh
 
-# --- Layer 6: OCCT source + cmake build (THE EXPENSIVE LAYER ~60 min) ---
-# Only invalidates when OCCT submodule source changes (rare).
+# --- Layer 6: OCCT source + cmake build (THE EXPENSIVE LAYER ~60 min each) ---
+# Only invalidates when OCCT submodule source changes (rare). Two builds:
+# `build` without threads and `build-mt` with pthreads, for the two npm builds.
 # Uses emcmake cmake directly instead of xtask to avoid coupling
-# this layer to Rust source changes.
+# this layer to Rust source changes. The flags must match `Threads::cflags`
+# in xtask/src/build.rs.
 # BuildKit cache mount persists ccache across builds.
 COPY occt/ occt/
 RUN --mount=type=cache,target=/cache/ccache \
-    mkdir -p occt/build && cd occt/build \
-    && emcmake cmake .. \
-        -G Ninja \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DBUILD_MODULE_FoundationClasses=TRUE \
-        -DBUILD_MODULE_ModelingData=TRUE \
-        -DBUILD_MODULE_ModelingAlgorithms=TRUE \
-        -DBUILD_MODULE_DataExchange=TRUE \
-        -DBUILD_MODULE_ApplicationFramework=TRUE \
-        -DBUILD_MODULE_Visualization=FALSE \
-        -DBUILD_MODULE_Draw=FALSE \
-        -DBUILD_LIBRARY_TYPE=Static \
-        -DUSE_FREETYPE=OFF \
-        -DUSE_RAPIDJSON=ON \
-        -D3RDPARTY_RAPIDJSON_INCLUDE_DIR=/workspace/3rdparty/rapidjson \
-        -DCMAKE_C_FLAGS="-fwasm-exceptions -O3 -msimd128 -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS" \
-        -DCMAKE_CXX_FLAGS="-fwasm-exceptions -O3 -msimd128 -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS" \
-        -Wno-dev \
-    && cmake --build . --parallel \
-    && echo "OCCT build complete: $(ls -1 lin32/clang/lib/*.a 2>/dev/null | wc -l) static libs"
+    for variant in build build-mt; do \
+        if [ "$variant" = build-mt ]; then \
+            flags="-fwasm-exceptions -O3 -msimd128 -pthread -DOCCT_NO_PLUGINS"; \
+        else \
+            flags="-fwasm-exceptions -O3 -msimd128 -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS"; \
+        fi; \
+        mkdir -p "occt/$variant" && cd "occt/$variant" \
+        && emcmake cmake .. \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_MODULE_FoundationClasses=TRUE \
+            -DBUILD_MODULE_ModelingData=TRUE \
+            -DBUILD_MODULE_ModelingAlgorithms=TRUE \
+            -DBUILD_MODULE_DataExchange=TRUE \
+            -DBUILD_MODULE_ApplicationFramework=TRUE \
+            -DBUILD_MODULE_Visualization=FALSE \
+            -DBUILD_MODULE_Draw=FALSE \
+            -DBUILD_LIBRARY_TYPE=Static \
+            -DUSE_FREETYPE=OFF \
+            -DUSE_RAPIDJSON=ON \
+            -D3RDPARTY_RAPIDJSON_INCLUDE_DIR=/workspace/3rdparty/rapidjson \
+            "-DCMAKE_C_FLAGS=$flags" \
+            "-DCMAKE_CXX_FLAGS=$flags" \
+            -Wno-dev \
+        && cmake --build . --parallel \
+        && echo "OCCT $variant: $(ls -1 lin32/clang/lib/*.a 2>/dev/null | wc -l) static libs" \
+        && cd /workspace || exit 1; \
+    done
 
 # --- Layer 7: xtask + crate source (changes when build logic changes) ---
 # crate/ is a workspace member; cargo parses all member manifests even for `-p xtask`,
@@ -87,10 +100,11 @@ COPY ts/tsconfig.json ts/eslint.config.js ts/vitest.config.ts ts/
 COPY test/ test/
 COPY .clang-format commitlint.config.js ./
 
-# Build: facade → link → wasm-opt → TypeScript
+# Build: facade → link → wasm-opt → TypeScript, without and with threads
 RUN --mount=type=cache,target=/cache/ccache \
     cargo xtask build --release \
-    && echo "WASM size: $(du -h dist/occt-wasm.wasm | cut -f1)"
+    && cargo xtask build --release --threads \
+    && echo "WASM size: $(du -h dist/occt-wasm.wasm | cut -f1), threaded $(du -h dist/occt-wasm-mt.wasm | cut -f1)"
 
 # Copy ts/scripts/ here (after WASM build) so the build cache for the
 # expensive WASM link step isn't invalidated by edits to copy-wasm.sh.
@@ -108,7 +122,7 @@ COPY README.md ./
 COPY examples/ examples/
 COPY benchmarks/ benchmarks/
 
-# Test
-RUN cd ts && npx vitest run
+# Test both builds
+RUN cd ts && npx vitest run && OCCT_WASM_THREADS=1 npx vitest run
 
 # Output is in dist/

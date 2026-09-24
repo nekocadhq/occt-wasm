@@ -10,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { WASM_STEM } from "./wasm-variant.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -65,7 +66,7 @@ console.log("|-------|-----|------|--------|");
 const wasmFiles: Array<{ label: string; path: string }> = [];
 
 // occt-wasm
-const occtWasm = join(root, "dist/occt-wasm.wasm");
+const occtWasm = join(root, `dist/${WASM_STEM}.wasm`);
 if (existsSync(occtWasm)) {
   wasmFiles.push({ label: "**occt-wasm** (current build)", path: occtWasm });
 }
@@ -112,12 +113,12 @@ for (const { label, path } of wasmFiles) {
 console.log("\n## Startup Time\n");
 
 // occt-wasm startup
-const createOcctWasm = (await import(join(root, "dist/occt-wasm.js"))).default;
+const createOcctWasm = (await import(join(root, `dist/${WASM_STEM}.js`))).default;
 let occtModule: any;
 
 await bench("occt-wasm init", async () => {
   occtModule = await createOcctWasm({
-    locateFile: () => join(root, "dist/occt-wasm.wasm"),
+    locateFile: () => join(root, `dist/${WASM_STEM}.wasm`),
   });
 }, 5);
 

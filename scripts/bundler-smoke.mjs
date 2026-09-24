@@ -93,10 +93,14 @@ async function checkVite(dir) {
         '<!doctype html><html><body><script type="module" src="./entry.js"></script></body></html>\n',
     );
 
+    // The threaded glue starts its pthread Workers from its own URL, and it has
+    // a top-level await, which Vite's default "iife" worker format rejects. A
+    // Vite app that bundles occt-wasm needs `worker: { format: "es" }`.
     await viteBuild({
         root: dir,
         logLevel: "error",
         build: { outDir, emptyOutDir: true, target: "esnext", minify: false },
+        worker: { format: "es" },
     });
 
     const emitted = await walk(outDir);

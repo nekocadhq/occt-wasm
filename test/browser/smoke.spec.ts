@@ -12,3 +12,13 @@ test("WASM loads and basic operations work in the browser", async ({ page }) => 
     // Verify all checks passed
     expect(text).toContain("ALL PASSED");
 });
+
+test("the threaded build runs OCCT on its Web Workers", async ({ page }) => {
+    // The server sends COOP and COEP with this page, so it has SharedArrayBuffer.
+    await page.goto("http://localhost:3000/test/browser/threads-isolated.html");
+
+    const result = await page.waitForSelector("#result", { timeout: 50_000 });
+    const text = await result.textContent();
+
+    expect(text).toContain("ALL PASSED");
+});

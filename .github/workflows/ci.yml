@@ -98,7 +98,7 @@ jobs:
           path: dist/
 
       - name: Copy WASM to ts/dist for test imports
-        run: mkdir -p ts/dist && cp dist/occt-wasm.js dist/occt-wasm.wasm ts/dist/
+        run: mkdir -p ts/dist && cp dist/occt-wasm.js dist/occt-wasm.wasm dist/occt-wasm-mt.js dist/occt-wasm-mt.wasm ts/dist/
 
       - name: Install dependencies
         run: npm ci

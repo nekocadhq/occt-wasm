@@ -70,7 +70,18 @@ const server = createServer((req, res) => {
         const file = await resolveFile(decoded);
         if (!file) return send(res, 404, "Not found\n");
 
-        res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" });
+        const headers = { "content-type": MIME[extname(file)] ?? "application/octet-stream" };
+        // A page whose name ends in "-isolated.html" is cross-origin isolated, so it
+        // has SharedArrayBuffer and can run the threaded build. The files that it
+        // loads get the headers too: a Web Worker's own script must carry COEP, or
+        // the browser blocks the worker. The other pages stay as they were, since
+        // isolation blocks any cross-origin resource that they load.
+        const referrer = req.headers.referer ? new URL(req.headers.referer).pathname : "";
+        if (file.endsWith("-isolated.html") || referrer.endsWith("-isolated.html")) {
+            headers["cross-origin-opener-policy"] = "same-origin";
+            headers["cross-origin-embedder-policy"] = "require-corp";
+        }
+        res.writeHead(200, headers);
         if (req.method === "HEAD") return res.end();
 
         createReadStream(file)

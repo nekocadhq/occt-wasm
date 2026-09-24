@@ -10,16 +10,19 @@ This is the NekoCAD fork of [andymai/occt-wasm](https://github.com/andymai/occt-
 
 ## Build from scratch
 
-Prerequisites: emsdk 5.0.3 (`~/emsdk`, then `source ~/emsdk/emsdk_env.sh`), Rust, Node, and Docker for the builder image.
+Prerequisites: emsdk 5.0.3 (`~/emsdk`, then `source ~/emsdk/emsdk_env.sh`), Rust, Node, `ninja`, and `ccache` (`brew install ninja ccache`), and Docker for the builder image. On an Apple silicon Mac, a native build of the OCCT libs takes about 5 minutes; the old amd64 builder image took about an hour under emulation.
 
 ```bash
 git submodule update --init
 bash scripts/fetch-rapidjson.sh
 npm ci --ignore-scripts && (cd ts && npm ci)
 cargo xtask build-occt          # only on a new checkout or a new OCCT commit
+cargo xtask build-occt --threads
 cargo xtask build --release
+cargo xtask build --release --threads
 (cd ts && npm run build)        # the raw-access tests load ts/dist
 cargo xtask test
+OCCT_WASM_THREADS=1 npx vitest run  # the same suite on the threaded build
 cargo xtask build-wasi --release  # after a facade change, so the crate stale-check passes
 ```
 
@@ -44,9 +47,15 @@ The npm publish, release-please, and crates.io workflows of upstream only run in
 
 ## Builder image
 
-CI links against `ghcr.io/nekocadhq/occt-wasm-builder`, which bakes the OCCT static libraries. Rebuild and push it after a change to the OCCT commit, emsdk, or the CMake flags:
+CI links against `ghcr.io/nekocadhq/occt-wasm-builder`, which bakes the OCCT static libraries: `occt/build` and, for the threaded build, `occt/build-mt`. Rebuild and push it after a change to the OCCT commit, emsdk, or the CMake flags:
 
 ```bash
-./scripts/builder-image.sh --build   # build only
-./scripts/builder-image.sh           # build and push (needs a token with write:packages)
+./scripts/builder-image.sh --build   # build for this machine only
+./scripts/builder-image.sh           # build for linux/amd64 and linux/arm64, and push (needs a token with write:packages)
 ```
+
+The image is multi-arch, but the libs compile once, natively on the machine that builds. They are WebAssembly, so each platform's image copies the same files.
+
+## Threads and NekoCAD
+
+The package holds a threaded build, `occt-wasm-mt`, which `OcctKernel.init()` loads when the page is cross-origin isolated. The NekoCAD desktop app sends the COOP and COEP headers with each response of its `nekocad://` protocol, and the Vite dev server sends them too. The README section "Threads" gives the rules.

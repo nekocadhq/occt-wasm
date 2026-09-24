@@ -26,6 +26,7 @@ jobs:
       - name: Link pre-built OCCT libs
         run: |
           cp -r /workspace/occt/build occt/build
+          cp -r /workspace/occt/build-mt occt/build-mt
           cp -r /workspace/3rdparty 3rdparty
 
       - name: Setup Node
@@ -45,14 +46,23 @@ jobs:
       - name: Build facade + link WASM
         run: cargo xtask build ${{ inputs.release && '--release' || '' }}
 
+      - name: Build facade + link threaded WASM
+        run: cargo xtask build --threads ${{ inputs.release && '--release' || '' }}
+
       - name: Build TypeScript
         run: |
           cd ts
           npm run build
-          cp ../dist/occt-wasm.js ../dist/occt-wasm.wasm dist/
 
       - name: Run tests
         run: npx vitest run
+
+      # The threaded build links other OCCT libs and runs OCCT's parallel
+      # algorithms, so it gets the whole suite as well.
+      - name: Run tests (threaded build)
+        run: npx vitest run
+        env:
+          OCCT_WASM_THREADS: "1"
 
       # The suite loads dist/occt-wasm.js directly, so OcctKernel.init()'s
       # dynamic import is only covered here. #271 shipped without it.

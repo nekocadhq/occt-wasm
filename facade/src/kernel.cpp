@@ -28,6 +28,13 @@
 #include <gp_Dir.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Pnt2d.hxx>
+#ifdef __EMSCRIPTEN_PTHREADS__
+#include <OSD_ThreadPool.hxx>
+#include <emscripten/em_js.h>
+#endif
+#ifdef OCCT_WASM_MIMALLOC
+#include <malloc.h>
+#endif
 #include <optional>
 #include <stdexcept>
 #include <unordered_set>
@@ -62,7 +69,57 @@ int OcctKernel::registerLabel(XCAFDocRecord& record, const TDF_Label& label) {
     return facadeId;
 }
 
+// --- Threads ---
+
+#ifdef __EMSCRIPTEN_PTHREADS__
+// The Web Workers that the glue started before the module ran (PTHREAD_POOL_SIZE in
+// xtask/src/build.rs). A new Worker starts only after this thread returns to its event
+// loop, so a thread that OCCT starts past these would never run while OCCT waits for it.
+EM_JS(int, occtWorkerPoolSize, (), { return PThread.unusedWorkers.length; });
+#endif
+
+#ifdef OCCT_WASM_MIMALLOC
+// The npm builds link mimalloc, which has no mallinfo(). Only OSD_MemInfo, a report of the
+// memory in use, calls it; the report then gives zeros instead of a failed link.
+extern "C" struct mallinfo mallinfo() {
+    return {};
+}
+#endif
+
+namespace {
+
+// Give OCCT's default thread pool one thread for each Web Worker, plus this thread, which
+// OCCT uses as well. This must occur before the first parallel algorithm: the pool is made
+// one time, and by default it takes the count of logical processors.
+void sizeThreadPool() {
+#ifdef __EMSCRIPTEN_PTHREADS__
+    static const bool sized = [] {
+        OSD_ThreadPool::DefaultPool(occtWorkerPoolSize() + 1);
+        return true;
+    }();
+    (void)sized;
+#endif
+}
+
+} // namespace
+
 // --- Mesh helpers (used by generated tessellation and STL methods) ---
+
+bool meshInParallel(const TopoDS_Shape& shape) {
+#ifdef __EMSCRIPTEN_PTHREADS__
+    // Measured on the models of NekoCAD: 12 faces meshed in 25 ms with threads and 6 ms
+    // without, and 87 to 192 faces meshed 1.8 to 2 times faster with threads.
+    constexpr int kMinFaces = 32;
+    int faces = 0;
+    for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More() && faces < kMinFaces; ex.Next()) {
+        ++faces;
+    }
+    return faces >= kMinFaces;
+#else
+    (void)shape;
+    return false;
+#endif
+}
 
 void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angularDeflection,
                  bool relative, bool force) {
@@ -71,7 +128,7 @@ void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angu
     params.Deflection = linearDeflection;
     params.Angle = angularDeflection;
     params.Relative = relative;
-    params.InParallel = false;
+    params.InParallel = meshInParallel(shape);
     if (force) {
         // The mesher reuses a triangulation by its linear deflection alone, so a finer one, or
         // one with a different angle, stays. Remove it, and mesh from nothing.
@@ -182,6 +239,7 @@ int MeshData::getFaceGroupsPtr() const {
 
 OcctKernel::OcctKernel() {
     OSD::SetSignal(false);
+    sizeThreadPool();
 }
 
 OcctKernel::~OcctKernel() {

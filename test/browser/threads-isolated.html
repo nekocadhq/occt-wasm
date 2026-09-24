@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head><title>occt-wasm threaded build smoke test</title></head>
+<body>
+<pre id="log"></pre>
+<div id="result"></div>
+<script type="module">
+const log = document.getElementById("log");
+const result = document.getElementById("result");
+
+function print(msg) {
+    log.textContent += msg + "\n";
+}
+
+try {
+    if (!crossOriginIsolated) throw new Error("page is not cross-origin isolated");
+
+    print("Loading threaded WASM module...");
+    const createModule = (await import("../../dist/occt-wasm-mt.js")).default;
+    const Module = await createModule();
+    if (!(Module.wasmMemory.buffer instanceof SharedArrayBuffer)) {
+        throw new Error("memory is not shared");
+    }
+    const kernel = new Module.OcctKernel();
+    print("WASM loaded. Kernel created.");
+
+    // A plate with 36 holes: a boolean and a mesh with many faces, which OCCT
+    // divides over its thread pool. A deadlock in the pool shows as a timeout.
+    const plate = kernel.makeBox(100, 100, 10);
+    const tools = new Module.VectorUint32();
+    for (let i = 0; i < 6; i++) {
+        for (let j = 0; j < 6; j++) {
+            tools.push_back(kernel.translate(kernel.makeCylinder(4, 30), 10 + i * 16, 10 + j * 16, -5));
+        }
+    }
+    const cut = kernel.cutAll(plate, tools);
+    tools.delete();
+    const vol = kernel.getVolume(cut);
+    const expected = 100 * 100 * 10 - 36 * Math.PI * 16 * 10;
+    if (Math.abs(vol - expected) > 1) throw new Error("cutAll volume " + vol + ", expected " + expected);
+    print("cutAll volume = " + vol.toFixed(1));
+
+    const mesh = kernel.meshShape(cut, 0.01, 0.1);
+    if (mesh.indexCount < 1000) throw new Error("Too few indices: " + mesh.indexCount);
+    print("meshShape: " + (mesh.indexCount / 3) + " triangles");
+    mesh.delete();
+
+    kernel.releaseAll();
+    kernel.delete();
+
+    print("\n--- ALL PASSED ---");
+    result.textContent = "ALL PASSED";
+} catch (e) {
+    print("\n--- FAILED: " + e.message + " ---");
+    result.textContent = "FAILED: " + e.message;
+}
+</script>
+</body>
+</html>

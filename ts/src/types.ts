@@ -106,6 +106,25 @@ export interface InitOptions {
      */
     wasm?: string | URL | ArrayBuffer | Uint8Array | undefined;
 
+    /**
+     * Use the threaded build, `occt-wasm-mt.{js,wasm}`, whose meshing and
+     * booleans run on a pool of Web Workers. It needs a `SharedArrayBuffer`,
+     * thus a page that is cross-origin isolated (COOP and COEP headers).
+     *
+     * - `"auto"` (default): the threaded build when `crossOriginIsolated` is
+     *   true, unless `wasm` is given without `wasmThreaded`, because `wasm` then
+     *   names the binary of the build without threads.
+     * - `true`: always; init fails without a `SharedArrayBuffer`.
+     * - `false`: never.
+     */
+    threads?: boolean | "auto" | undefined;
+
+    /**
+     * Location of the threaded WASM binary, as {@link InitOptions.wasm} for the
+     * build without threads. When omitted, it is located next to the JS module.
+     */
+    wasmThreaded?: string | URL | ArrayBuffer | Uint8Array | undefined;
+
     /** @deprecated Use `wasm` instead. Browser URL to the .wasm file. */
     wasmUrl?: string | undefined;
     /** @deprecated Use `wasm` instead. Node.js filesystem path to the .wasm file. */

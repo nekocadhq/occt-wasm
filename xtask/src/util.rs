@@ -1,7 +1,8 @@
 //! Shared utilities for the xtask build tool.
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// Project root (parent of xtask/).
 pub fn project_root() -> Result<PathBuf> {
@@ -73,4 +74,64 @@ pub fn home_dir() -> Option<PathBuf> {
 #[allow(clippy::cast_precision_loss)] // file sizes fit in an f64 mantissa
 pub fn bytes_to_mb(n: u64) -> f64 {
     n as f64 / 1_048_576.0
+}
+
+/// The environment that sends each Emscripten compile through ccache, or
+/// nothing when ccache is not installed.
+///
+/// `CC=ccache` does not work here: emcmake replaces the compiler with `emcc`,
+/// and ccache does not know the arguments of `emcc`. Emscripten's own
+/// `EM_COMPILER_WRAPPER` puts ccache in front of the clang that `emcc` runs,
+/// and ccache knows clang. `CCACHE_BASEDIR` makes the paths relative, so a
+/// second checkout, or the builder container, hits the same cache. A wrapper
+/// that the caller already set stays.
+pub fn ccache_env(root: &Path) -> Vec<(&'static str, String)> {
+    if std::env::var_os("EM_COMPILER_WRAPPER").is_some() || find_on_path("ccache").is_none() {
+        return Vec::new();
+    }
+    vec![
+        ("EM_COMPILER_WRAPPER", "ccache".to_owned()),
+        ("CCACHE_BASEDIR", root.display().to_string()),
+        ("CCACHE_NOHASHDIR", "1".to_owned()),
+    ]
+}
+
+/// The first executable called `name` on `PATH`.
+pub fn find_on_path(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(name))
+        .find(|p| p.is_file())
+}
+
+/// Run the commands at the same time, no more than one for each processor, and
+/// fail when one of them fails. `label` names each command in the log.
+pub fn run_parallel(commands: Vec<(String, Command)>) -> Result<()> {
+    let limit = std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get);
+    let mut pending = commands.into_iter();
+    let mut running = Vec::new();
+    let mut failed = Vec::new();
+    loop {
+        while running.len() < limit {
+            let Some((label, mut command)) = pending.next() else {
+                break;
+            };
+            eprintln!("  Compiling {label}...");
+            let child = command
+                .spawn()
+                .with_context(|| format!("failed to start the compile of {label}"))?;
+            running.push((label, child));
+        }
+        if running.is_empty() {
+            break;
+        }
+        let (label, mut child) = running.remove(0);
+        if !child.wait()?.success() {
+            failed.push(label);
+        }
+    }
+    if !failed.is_empty() {
+        bail!("compile failed: {}", failed.join(", "));
+    }
+    Ok(())
 }

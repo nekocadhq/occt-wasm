@@ -34,6 +34,12 @@ export interface OcctWasmModule {
     HEAPF32: Float32Array;
     HEAPU32: Uint32Array;
     HEAP32: Int32Array;
+    /**
+     * The linear memory. Its `buffer` is always the current one, including after
+     * growth on another thread of the threaded build, where the `HEAP*` views
+     * above stay on the old buffer until the glue next refreshes them.
+     */
+    wasmMemory: WebAssembly.Memory;
     FS: EmscriptenFS;
     /**
      * Emscripten helper exported by `-sEXPORT_EXCEPTION_HANDLING_HELPERS=1`.

@@ -9,15 +9,15 @@ occt-wasm compiles OpenCascade (OCCT) C++ to WebAssembly and ships it two ways f
 Prerequisites: Rust 1.95 (pinned in `rust-toolchain.toml`), emsdk 5.0.3. Building the OCCT static libs from scratch is slow (~1h); CI and the `docker:*` scripts skip it by using the prebuilt `ghcr.io/nekocadhq/occt-wasm-builder` image, which bakes the libs.
 
 ```bash
-cargo xtask build-occt           # OCCT static libs (slow; only after an OCCT bump)
-cargo xtask build [--release]    # OCCT (if missing) + facade → dist/occt-wasm.{js,wasm}; --release adds LTO + wasm-opt
+cargo xtask build-occt [--threads]          # OCCT static libs → occt/build (occt/build-mt with --threads); ~5 min native, ~1h under emulation
+cargo xtask build [--release] [--threads]   # OCCT (if missing) + facade → dist/occt-wasm{,-mt}.{js,wasm}; --release adds wasm-opt
 cargo xtask build-wasi --release # Standalone WASI .wasm → brotli → crate/src/occt-wasm.wasm.br
 cargo xtask codegen              # Regenerate the facade from specs (see "Codegen")
 cargo xtask test                 # Vitest — requires a prior build (loads dist/occt-wasm.wasm)
 cargo xtask clean
 ```
 
-Tests load the prebuilt WASM from `dist/`, so **run a build before testing**. To iterate faster, drive vitest directly from `ts/`:
+Tests load the prebuilt WASM from `dist/`, so **run a build before testing**. `OCCT_WASM_THREADS=1` points the suite at the threaded build (`test/wasm-variant.ts`). With `ccache` on `PATH`, xtask sends every Emscripten compile through it (`EM_COMPILER_WRAPPER`); `CC=ccache` does nothing under emcmake. To iterate faster, drive vitest directly from `ts/`:
 
 ```bash
 cd ts && npx vitest run ../test/integration.test.ts   # one file
@@ -31,7 +31,7 @@ Benchmarks: `npx vitest run test/bench.test.ts` (from repo root, after a build) 
 
 Layering: **OCCT C++ → C++ facade (`OcctKernel`) → Embind / WASI C-ABI → TS wrapper or Rust crate**.
 
-- `facade/` — the C++ facade. Almost entirely **generated** (`facade/generated/{kernel,bindings,wasi_exports}.cpp`); only `facade/src/kernel.cpp` (the arena, mesh extraction, XCAF helpers) is hand-written.
+- `facade/` — the C++ facade. Almost entirely **generated** (`facade/generated/kernel_<category>.cpp`, one file per spec category so they compile in parallel, plus `bindings.cpp` and `wasi_exports.cpp`); only `facade/src/kernel.cpp` (the arena, mesh extraction, XCAF helpers, thread-pool sizing) is hand-written.
 - `ts/src/` — the npm package. `index.ts` is the `OcctKernel` wrapper; `raw-types.ts` the Embind type surface; `types.ts` shared types + `OcctError`/`wrap`; `worker.ts` an off-main-thread Comlink proxy; `xcaf-document.ts` the XCAF assembly builder (real OCCT XDE for colors/names/glTF); `svg.ts` HLR projection rendering.
 - `xtask/` — Rust build orchestration **and** the code generator (`xtask/src/codegen/`).
 - `crate/` — the Rust crate; embeds `occt-wasm.wasm.br` and runs it via wasmtime. `crate/src/kernel_generated.rs` is generated.
@@ -42,7 +42,8 @@ Layering: **OCCT C++ → C++ facade (`OcctKernel`) → Embind / WASI C-ABI → T
 The generated files are **committed** (force-tracked despite `.gitignore`). After any change under `xtask/src/codegen/` or to a spec, run `cargo xtask codegen && cargo fmt --all` and commit the result — the CI lint job fails on drift.
 
 ### Two build targets, one facade
-- **npm** (`cargo xtask build`): facade + OCCT linked with Embind + JS glue → `dist/occt-wasm.{js,wasm}`.
+- **npm** (`cargo xtask build`): facade + OCCT linked with Embind + JS glue → `dist/occt-wasm.{js,wasm}`. Both npm builds link mimalloc.
+- **npm, threaded** (`cargo xtask build --threads`): the same with `-pthread` against `occt/build-mt` → `dist/occt-wasm-mt.{js,wasm}`. `OcctKernel.init()` picks it when `crossOriginIsolated` (option `threads`). The pthread pool is made before the module runs (`PTHREAD_POOL_SIZE` in `xtask/src/build.rs`), and the facade sizes OCCT's `OSD_ThreadPool` to it: an OCCT thread past the pool would deadlock, since a new Worker starts only when its creator yields. The package ships both builds, since bundlers resolve both glue imports.
 - **crate** (`cargo xtask build-wasi`): linked with `-sSTANDALONE_WASM=1` (no JS, C-ABI exports from `wasi_exports.cpp`) → brotli → `crate/src/occt-wasm.wasm.br`.
 
 Any facade/codegen change invalidates the committed `wasm.br`. CI's "WASI build + stale-check" rebuilds it and **fails** if the bytes differ, uploading a fresh `occt-wasm.wasm.br-fresh` artifact — download it (`gh run download <id> -n occt-wasm.wasm.br-fresh`), drop it at `crate/src/occt-wasm.wasm.br`, and commit. Bumping the OCCT submodule additionally requires rebuilding + pushing the builder image (CI links against its baked libs).

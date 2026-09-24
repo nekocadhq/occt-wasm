@@ -18,6 +18,12 @@ TDF_Label lookupLabel(const std::map<int, TDF_Label>& registry, int labelId);
 
 // Mesh helpers (defined in kernel.cpp, used by generated tessellation and STL methods)
 
+/// Whether the mesher divides the faces of `shape` over OCCT's thread pool. Only the threaded
+/// npm build has threads, and only a shape with many faces gains: each parallel stage of the
+/// mesher hands its work to the Web Workers and waits for them, which costs more than it saves
+/// on a few faces.
+bool meshInParallel(const TopoDS_Shape& shape);
+
 /// Meshes a shape. With `force`, it first removes the triangulation that the shape holds,
 /// which the mesher otherwise keeps when it is finer or has a different angle. Hold a
 /// MeshSnapshot of the shape to put that triangulation back.

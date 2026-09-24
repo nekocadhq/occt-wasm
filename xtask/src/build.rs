@@ -4,7 +4,9 @@ use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use xshell::{Shell, cmd};
 
-use crate::util::{bytes_to_mb, find_occt_lib_dir, find_wasm_opt, project_root};
+use crate::util::{
+    bytes_to_mb, ccache_env, find_occt_lib_dir, find_wasm_opt, project_root, run_parallel,
+};
 
 /// Emscripten's default stack is 64 KB and it sits directly above the static
 /// data segment, so an overflow silently overwrites globals instead of
@@ -14,11 +16,90 @@ use crate::util::{bytes_to_mb, find_occt_lib_dir, find_wasm_opt, project_root};
 /// cost nothing.
 pub const WASM_STACK_SIZE: u32 = 8 * 1024 * 1024;
 
+/// The stack of each OCCT worker thread in the threaded build. Emscripten's
+/// default is 64 KB, which a fillet already overruns on the main thread (see
+/// [`WASM_STACK_SIZE`]). The stacks come from the heap, one for each worker.
+const PTHREAD_STACK_SIZE: u32 = 2 * 1024 * 1024;
+
+/// The number of Web Workers that the threaded glue starts before the module
+/// runs: one fewer than the logical processors, from 1 to 10. The caller's thread
+/// is the last one. It is a JavaScript expression, because the glue evaluates it.
+/// On a 16-core machine, 10 workers rebuild a modeled thread 5% faster than 7,
+/// and 15 only 2% faster than 10, for about 13 MB of memory for each worker.
+///
+/// OCCT must not start more threads than this. A Web Worker starts only after
+/// the thread that made it returns to its event loop, and an OCCT thread pool
+/// blocks that thread until its jobs are done, so one more thread is a
+/// deadlock. The facade reads the size of this pool when it sizes OCCT's pool
+/// (`facade/src/kernel.cpp`).
+const PTHREAD_POOL_SIZE: &str =
+    "Math.min(Math.max((globalThis.navigator?.hardwareConcurrency??2)-1,1),10)";
+
+/// Whether a build uses Emscripten pthreads.
+///
+/// The threaded build needs a `SharedArrayBuffer`, so it runs only on a page
+/// that is cross-origin isolated (COOP and COEP headers). It has its own OCCT
+/// static libs, because every object in a threaded link must be compiled with
+/// `-pthread`, and its own output file, so a package ships both builds.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Threads {
+    /// One thread. Runs everywhere.
+    Off,
+    /// OCCT's parallel algorithms on a pool of Web Workers.
+    On,
+}
+
+impl Threads {
+    /// The C and C++ flags of OCCT and of the facade.
+    const fn cflags(self) -> &'static [&'static str] {
+        match self {
+            Self::Off => &[
+                "-fwasm-exceptions",
+                "-O3",
+                "-msimd128",
+                "-DIGNORE_NO_ATOMICS=1",
+                "-DOCCT_NO_PLUGINS",
+            ],
+            Self::On => &[
+                "-fwasm-exceptions",
+                "-O3",
+                "-msimd128",
+                "-pthread",
+                "-DOCCT_NO_PLUGINS",
+            ],
+        }
+    }
+
+    /// The OCCT build tree of this variant.
+    pub fn occt_build_dir(self, root: &Path) -> PathBuf {
+        root.join(match self {
+            Self::Off => "occt/build",
+            Self::On => "occt/build-mt",
+        })
+    }
+
+    /// The directory of the facade objects of this variant.
+    fn object_dir(self, root: &Path) -> PathBuf {
+        root.join(match self {
+            Self::Off => "build",
+            Self::On => "build-mt",
+        })
+    }
+
+    /// The file name of the glue and the `.wasm`, without the extension.
+    const fn output_stem(self) -> &'static str {
+        match self {
+            Self::Off => "occt-wasm",
+            Self::On => "occt-wasm-mt",
+        }
+    }
+}
+
 /// Step 1: Build OCCT static libraries via emcmake cmake.
-pub fn build_occt() -> Result<()> {
+pub fn build_occt(threads: Threads) -> Result<()> {
     let root = project_root()?;
     let occt_dir = root.join("occt");
-    let build_dir = occt_dir.join("build");
+    let build_dir = threads.occt_build_dir(&root);
 
     if !occt_dir.join("CMakeLists.txt").exists() {
         bail!(
@@ -30,20 +111,23 @@ pub fn build_occt() -> Result<()> {
     let sh = Shell::new()?;
     sh.create_dir(&build_dir)?;
     sh.change_dir(&build_dir);
+    for (key, value) in ccache_env(&root) {
+        sh.set_var(key, value);
+    }
 
     // Skip if already configured
     if build_dir.join("build.ninja").exists() {
         eprintln!("Step 1a: OCCT already configured, skipping cmake.");
     } else {
-        eprintln!("Step 1a: Configuring OCCT with emcmake cmake...");
+        eprintln!("Step 1a: Configuring OCCT ({threads:?} threads) with emcmake cmake...");
 
-        let c_flags = "-fwasm-exceptions -O3 -msimd128 -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS";
-        let cxx_flags = c_flags;
+        let c_flags = threads.cflags().join(" ");
+        let cxx_flags = &c_flags;
         let rapidjson_inc = root.join("3rdparty/rapidjson").display().to_string();
 
         cmd!(
             sh,
-            "emcmake cmake ..
+            "emcmake cmake {occt_dir}
             -G Ninja
             -DCMAKE_BUILD_TYPE=Release
             -DBUILD_MODULE_FoundationClasses=TRUE
@@ -71,12 +155,12 @@ pub fn build_occt() -> Result<()> {
     Ok(())
 }
 
-/// Step 2: Compile facade C++ files with emcc.
-fn compile_facade(sh: &Shell, root: &Path) -> Result<Vec<PathBuf>> {
-    let build_dir = root.join("build");
-    sh.create_dir(&build_dir)?;
+/// Step 2: Compile facade C++ files with emcc, all at the same time.
+fn compile_facade(root: &Path, threads: Threads) -> Result<Vec<PathBuf>> {
+    let build_dir = threads.object_dir(root);
+    std::fs::create_dir_all(&build_dir)?;
 
-    let occt_inc = root.join("occt/build/include/opencascade");
+    let occt_inc = threads.occt_build_dir(root).join("include/opencascade");
     let facade_inc = root.join("facade/include");
 
     if !occt_inc.exists() {
@@ -92,7 +176,7 @@ fn compile_facade(sh: &Shell, root: &Path) -> Result<Vec<PathBuf>> {
         .filter(|p| p.extension().is_some_and(|e| e == "cpp"))
         .collect();
 
-    // Also compile generated facade files (kernel.cpp + bindings.cpp).
+    // Also compile generated facade files (kernel_<category>.cpp + bindings.cpp).
     // Exclude wasi_exports.cpp: it's the C-ABI export layer for the standalone
     // WASI build (cargo xtask build-wasi), not the Embind/npm path, so linking it
     // here only adds ~60 KB of dead code.
@@ -116,16 +200,16 @@ fn compile_facade(sh: &Shell, root: &Path) -> Result<Vec<PathBuf>> {
 
     // Track header mtimes: if any header changed, all objects are stale.
     let newest_header = newest_header_mtime(&facade_inc)?;
+    let ccache = ccache_env(root);
 
     let mut objects = Vec::new();
-    let occt_inc_str = occt_inc.display().to_string();
-    let facade_inc_str = facade_inc.display().to_string();
-
+    let mut compiles = Vec::new();
     for src in &sources {
         let name = src.file_stem().context("no file stem")?.to_string_lossy();
         let is_generated = src.starts_with(&gen_dir);
         let prefix = if is_generated { "gen_" } else { "" };
         let obj = build_dir.join(format!("{prefix}{name}.o"));
+        objects.push(obj.clone());
 
         // Skip if .o is newer than both the .cpp and all facade headers.
         if obj.exists() {
@@ -133,25 +217,28 @@ fn compile_facade(sh: &Shell, root: &Path) -> Result<Vec<PathBuf>> {
             let newest_dep = newest_header.map_or(src_modified, |h| h.max(src_modified));
             let obj_modified = std::fs::metadata(&obj)?.modified()?;
             if obj_modified >= newest_dep {
-                objects.push(obj);
                 continue;
             }
         }
 
-        eprintln!("  Compiling {name}.cpp...");
-        let src_str = src.display().to_string();
-        let obj_str = obj.display().to_string();
-        cmd!(
-            sh,
-            "em++ -std=c++17 -fwasm-exceptions -O3 -msimd128
-            -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS
-            -I{occt_inc_str} -I{facade_inc_str}
-            -w -c {src_str} -o {obj_str}"
-        )
-        .run()?;
-
-        objects.push(obj);
+        let mut command = std::process::Command::new("em++");
+        command
+            .arg("-std=c++17")
+            .args(threads.cflags())
+            // The link below uses mimalloc (see `link_wasm`).
+            .arg("-DOCCT_WASM_MIMALLOC=1")
+            .arg("-I")
+            .arg(&occt_inc)
+            .arg("-I")
+            .arg(&facade_inc)
+            .args(["-w", "-c"])
+            .arg(src)
+            .arg("-o")
+            .arg(&obj)
+            .envs(ccache.iter().map(|(k, v)| (k, v)));
+        compiles.push((format!("{prefix}{name}.cpp"), command));
     }
+    run_parallel(compiles)?;
 
     Ok(objects)
 }
@@ -187,16 +274,16 @@ const EXCLUDED_LIBS: &[&str] = &[
 
 /// Step 3: Link facade objects + OCCT static libs → .wasm + .js
 fn link_wasm(
-    sh: &Shell,
     root: &Path,
     objects: &[PathBuf],
+    threads: Threads,
     release: bool,
     size: bool,
 ) -> Result<()> {
     let dist_dir = root.join("dist");
-    sh.create_dir(&dist_dir)?;
+    std::fs::create_dir_all(&dist_dir)?;
 
-    let occt_lib_dir = find_occt_lib_dir(&root.join("occt/build"))?;
+    let occt_lib_dir = find_occt_lib_dir(&threads.occt_build_dir(root))?;
 
     // Collect all OCCT static lib paths, filtering out unused libraries.
     let mut all_libs: Vec<PathBuf> = std::fs::read_dir(&occt_lib_dir)?
@@ -220,7 +307,7 @@ fn link_wasm(
     eprintln!("  Excluded {excluded}/{total} unused OCCT libs from link.");
 
     let obj_strs: Vec<String> = objects.iter().map(|p| p.display().to_string()).collect();
-    let output = dist_dir.join("occt-wasm.js");
+    let output = dist_dir.join(format!("{}.js", threads.output_stem()));
     let output_str = output.display().to_string();
     let post_js = root.join("scripts/symbol_dispose.js");
     let post_js_str = post_js.display().to_string();
@@ -245,15 +332,35 @@ fn link_wasm(
         "-sALLOW_MEMORY_GROWTH=1".into(),
         format!("-sSTACK_SIZE={WASM_STACK_SIZE}"),
         "-sEXPORT_ES6=1".into(),
-        "-sEVAL_CTORS=2".into(),
         "-sWASM_BIGINT".into(),
         "-sMODULARIZE=1".into(),
         "-sEXPORT_NAME=createOcctWasm".into(),
-        "-sEXPORTED_RUNTIME_METHODS=[\"FS\",\"HEAP32\",\"HEAPF32\",\"HEAPU32\"]".into(),
+        "-sEXPORTED_RUNTIME_METHODS=[\"FS\",\"HEAP32\",\"HEAPF32\",\"HEAPU32\",\"wasmMemory\"]"
+            .into(),
         "-sEXPORT_EXCEPTION_HANDLING_HELPERS=1".into(),
         "--no-entry".into(),
         format!("--post-js={post_js_str}"),
     ];
+
+    // mimalloc instead of dlmalloc: OCCT allocates many small objects, and
+    // mimalloc made booleans and STEP export 4-10% faster with one thread. With
+    // threads it matters more, since dlmalloc takes one global lock for each
+    // allocation and OCCT allocates in every parallel job.
+    args.push("-sMALLOC=mimalloc".into());
+
+    // Threads: a pool of Web Workers made before the module runs.
+    // EVAL_CTORS runs the static constructors at link time. Emscripten does not
+    // support it with pthreads, whose data segments are passive.
+    if threads == Threads::Off {
+        args.push("-sEVAL_CTORS=2".into());
+    }
+    if threads == Threads::On {
+        args.extend([
+            "-pthread".into(),
+            format!("-sPTHREAD_POOL_SIZE={PTHREAD_POOL_SIZE}"),
+            format!("-sDEFAULT_PTHREAD_STACK_SIZE={PTHREAD_STACK_SIZE}"),
+        ]);
+    }
 
     // Debug builds trap in the prologue of any function that would overrun the
     // stack, turning a silent static-data overwrite into a loud failure.
@@ -298,35 +405,38 @@ fn link_wasm(
 /// evaluates outside Node — that is what lets the TS wrapper import the glue
 /// with a plain, bundler-visible `import("./occt-wasm.js")` so webpack (and
 /// Next.js) can emit the glue chunk and rewrite the `.wasm` asset URL.
-fn patch_glue_for_bundlers(root: &Path) -> Result<()> {
-    const TARGET: &str = "import(\"node:module\")";
-    const MARKER: &str = "import(/* webpackIgnore: true */ \"node:module\")";
+///
+/// The threaded glue also imports `node:worker_threads` for its Node pthreads,
+/// so every `node:` import gets the marker.
+fn patch_glue_for_bundlers(root: &Path, threads: Threads) -> Result<()> {
+    const TARGET: &str = "import(\"node:";
+    const MARKER: &str = "import(/* webpackIgnore: true */ \"node:";
+    const REQUIRED: &str = "import(/* webpackIgnore: true */ \"node:module\")";
 
-    let glue = root.join("dist/occt-wasm.js");
+    let glue = root.join(format!("dist/{}.js", threads.output_stem()));
     let source = std::fs::read_to_string(&glue)
         .with_context(|| format!("failed to read {}", glue.display()))?;
+    let patched = source.replace(TARGET, MARKER);
 
-    if source.contains(MARKER) {
-        return Ok(());
-    }
-
-    if !source.contains(TARGET) {
+    if !patched.contains(REQUIRED) {
         bail!(
-            "{} contains no `{TARGET}` to mark for bundlers. Emscripten likely \
-             changed how the ES6 glue loads Node builtins — check the new shape \
+            "{} contains no `import(\"node:module\")` to mark for bundlers. Emscripten \
+             likely changed how the ES6 glue loads Node builtins — check the new shape \
              against a webpack build and update `patch_glue_for_bundlers`.",
             glue.display()
         );
     }
 
-    std::fs::write(&glue, source.replace(TARGET, MARKER))
-        .with_context(|| format!("failed to write {}", glue.display()))?;
+    if patched != source {
+        std::fs::write(&glue, patched)
+            .with_context(|| format!("failed to write {}", glue.display()))?;
+    }
     Ok(())
 }
 
 /// Step 4: Run wasm-opt on the output.
-fn optimize_wasm(sh: &Shell, root: &Path) -> Result<()> {
-    let wasm = root.join("dist/occt-wasm.wasm");
+fn optimize_wasm(sh: &Shell, root: &Path, threads: Threads) -> Result<()> {
+    let wasm = root.join(format!("dist/{}.wasm", threads.output_stem()));
     let wasm_str = wasm.display().to_string();
 
     let wasm_opt_bin = find_wasm_opt();
@@ -339,6 +449,10 @@ fn optimize_wasm(sh: &Shell, root: &Path) -> Result<()> {
     // floor. The crate build can use exnref only because wasmtime is configured
     // to accept it; the npm build targets unmodified browsers AND Node, so
     // legacy EH stays. Revisit once exnref is default across the support matrix.
+    let threads_flag: &[&str] = match threads {
+        Threads::Off => &[],
+        Threads::On => &["--enable-threads"],
+    };
     eprintln!("Step 4: Running wasm-opt...");
     cmd!(
         sh,
@@ -347,6 +461,7 @@ fn optimize_wasm(sh: &Shell, root: &Path) -> Result<()> {
         --enable-bulk-memory --enable-sign-ext
         --enable-nontrapping-float-to-int --enable-mutable-globals
         --enable-exception-handling --enable-simd --enable-tail-call
+        {threads_flag...}
         {wasm_str} -o {wasm_str}"
     )
     .run()?;
@@ -384,21 +499,21 @@ fn newest_header_mtime(include_dir: &Path) -> Result<Option<std::time::SystemTim
 }
 
 /// Full build: OCCT + facade + link + wasm-opt.
-pub fn build(release: bool, size: bool) -> Result<()> {
+pub fn build(release: bool, size: bool, threads: Threads) -> Result<()> {
     let root = project_root()?;
     let sh = Shell::new()?;
 
     // Step 1: Build OCCT static libs (skip if already built)
-    let occt_lib_dir = find_occt_lib_dir(&root.join("occt/build"));
+    let occt_lib_dir = find_occt_lib_dir(&threads.occt_build_dir(&root));
     if occt_lib_dir.is_err() {
         eprintln!("Step 1: OCCT static libs not found, building...");
-        build_occt()?;
+        build_occt(threads)?;
     } else {
         eprintln!("Step 1: OCCT static libs found, skipping.");
     }
 
     // Step 1b: Run codegen if generated facade is missing
-    let gen_kernel = root.join("facade/generated/kernel.cpp");
+    let gen_kernel = root.join("facade/generated/kernel_primitives.cpp");
     if !gen_kernel.exists() {
         eprintln!("Step 1b: Generated facade not found, running codegen...");
         crate::codegen::run::run()?;
@@ -406,23 +521,26 @@ pub fn build(release: bool, size: bool) -> Result<()> {
 
     // Step 2: Compile facade
     eprintln!("Step 2: Compiling facade...");
-    let objects = compile_facade(&sh, &root)?;
+    let objects = compile_facade(&root, threads)?;
     eprintln!("  {} object files ready.", objects.len());
 
     // Step 3: Link
-    link_wasm(&sh, &root, &objects, release, size)?;
-    patch_glue_for_bundlers(&root)?;
+    link_wasm(&root, &objects, threads, release, size)?;
+    patch_glue_for_bundlers(&root, threads)?;
 
     // Step 4: wasm-opt (release only)
     if release {
-        optimize_wasm(&sh, &root)?;
+        optimize_wasm(&sh, &root, threads)?;
     }
 
     // Report
-    let wasm_path = root.join("dist/occt-wasm.wasm");
+    let wasm_path = root.join(format!("dist/{}.wasm", threads.output_stem()));
     if wasm_path.exists() {
         let size_mb = bytes_to_mb(std::fs::metadata(&wasm_path)?.len());
-        eprintln!("Build complete: dist/occt-wasm.wasm ({size_mb:.1}MB)");
+        eprintln!(
+            "Build complete: dist/{}.wasm ({size_mb:.1}MB)",
+            threads.output_stem()
+        );
     }
 
     Ok(())
@@ -434,8 +552,10 @@ pub fn clean(keep_generated: bool) -> Result<()> {
     let sh = Shell::new()?;
 
     let mut dirs_to_clean = vec![
-        root.join("occt/build"),
-        root.join("build"),
+        Threads::Off.occt_build_dir(&root),
+        Threads::On.occt_build_dir(&root),
+        Threads::Off.object_dir(&root),
+        Threads::On.object_dir(&root),
         root.join("dist"),
     ];
     if !keep_generated {

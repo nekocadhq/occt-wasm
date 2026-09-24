@@ -106,7 +106,7 @@ import type {
     UVBounds,
     Vec3,
 } from "./types.js";
-import { JoinType, SweepContact, SweepLaw, SweepMode, TransitionMode, addExceptionDecoder, wrap } from "./types.js";
+import { JoinType, OcctError, OcctErrorCode, SweepContact, SweepLaw, SweepMode, TransitionMode, addExceptionDecoder, wrap } from "./types.js";
 import { SHAPE_TYPES, SHAPE_ORIENTATIONS, POINT_CLASSIFICATIONS } from "./types.js";
 import type {
     OcctWasmModule,
@@ -184,9 +184,11 @@ export class OcctKernel {
     readonly #raw: OcctRawKernel;
     readonly #module: OcctWasmModule;
     readonly #releaseDecoder: () => void;
+    readonly #threaded: boolean;
 
-    private constructor(module: OcctWasmModule) {
+    private constructor(module: OcctWasmModule, threaded: boolean) {
         this.#module = module;
+        this.#threaded = threaded;
         this.#raw = new module.OcctKernel();
         this.#releaseDecoder = addExceptionDecoder((e) => module.getExceptionMessage?.(e));
         kernelRegistry.register(this, { raw: this.#raw, releaseDecoder: this.#releaseDecoder }, this);
@@ -209,16 +211,25 @@ export class OcctKernel {
      * ```
      */
     static async init(options?: InitOptions): Promise<OcctKernel> {
-        // @ts-expect-error -- occt-wasm.js is generated at build time, no .d.ts
-        const imported = await import("./occt-wasm.js");
-        const createModule = imported.default as (
+        const threads = OcctKernel.#useThreads(options);
+        const imported: unknown = threads
+            // @ts-expect-error -- occt-wasm-mt.js is generated at build time, no .d.ts
+            ? await import("./occt-wasm-mt.js")
+            // @ts-expect-error -- occt-wasm.js is generated at build time, no .d.ts
+            : await import("./occt-wasm.js");
+        const createModule = (imported as { default: unknown }).default as (
             opts: Record<string, unknown>,
         ) => Promise<OcctWasmModule>;
 
         const moduleOpts: Record<string, unknown> = {};
 
-        // Resolve the WASM source: new `wasm` option > legacy `wasmUrl`/`wasmPath`
-        const wasmSource = options?.wasm ?? options?.wasmUrl ?? options?.wasmPath;
+        // Resolve the WASM source: new `wasm` option > legacy `wasmUrl`/`wasmPath`.
+        // The threaded build names its default binary here instead of in its glue:
+        // webpack puts the glue's own reference in a chunk that has no JS file, and
+        // the glue then fails to load it. A bundler rewrites this URL like the glue's.
+        const wasmSource = threads
+            ? options?.wasmThreaded ?? new URL("./occt-wasm-mt.wasm", import.meta.url)
+            : options?.wasm ?? options?.wasmUrl ?? options?.wasmPath;
 
         if (wasmSource instanceof ArrayBuffer || wasmSource instanceof Uint8Array) {
             // Pre-loaded binary — pass directly to Emscripten
@@ -238,8 +249,82 @@ export class OcctKernel {
         // When no source is given, Emscripten's default locateFile resolves
         // relative to the JS module URL, which works when .wasm is co-located.
 
-        const module = await createModule(moduleOpts);
-        return new OcctKernel(module);
+        // A Web Worker of the threaded build that fails to start never resolves the
+        // module: a script error only prints, and a script that the browser blocks
+        // (one without the COEP header on an isolated page) reports nothing. Watch
+        // for both, so init fails with a cause instead of waiting forever.
+        let workerFailed: ((error: Error) => void) | undefined;
+        const workerFailure = new Promise<never>((_, reject) => {
+            workerFailed = reject;
+        });
+        const failWorkers = (cause: string) =>
+            workerFailed?.(
+                new OcctError(
+                    "init",
+                    `the Web Workers of the threaded build did not start (${cause}). On a ` +
+                        "cross-origin isolated page, each script must also have the " +
+                        "Cross-Origin-Embedder-Policy header",
+                    OcctErrorCode.KernelError,
+                ),
+            );
+        let workerTimer: ReturnType<typeof setTimeout> | undefined;
+        if (threads) {
+            moduleOpts["printErr"] = (text: string) => {
+                if (text.startsWith("worker sent an error!")) failWorkers(text);
+                console.error(text);
+            };
+            // The glue compiles the module before it counts run dependencies, so
+            // its one dependency is the load of the module into each Worker. That
+            // needs a moment for each Worker, not seconds.
+            moduleOpts["monitorRunDependencies"] = (left: number) => {
+                clearTimeout(workerTimer);
+                if (left > 0) {
+                    workerTimer = setTimeout(
+                        () => failWorkers("no Worker was ready after 20 s"),
+                        OcctKernel.#WORKER_START_TIMEOUT_MS,
+                    );
+                }
+            };
+        }
+
+        try {
+            const module = await Promise.race([createModule(moduleOpts), workerFailure]);
+            return new OcctKernel(module, threads);
+        } finally {
+            clearTimeout(workerTimer);
+        }
+    }
+
+    static readonly #WORKER_START_TIMEOUT_MS = 20_000;
+
+    /** The decision of {@link InitOptions.threads}. */
+    static #useThreads(options: InitOptions | undefined): boolean {
+        const choice = options?.threads ?? "auto";
+        if (choice === false) return false;
+        const shared = typeof SharedArrayBuffer !== "undefined";
+        if (choice === true) {
+            if (!shared) {
+                throw new OcctError(
+                    "init",
+                    "threads: true needs SharedArrayBuffer: serve the page with the " +
+                        "Cross-Origin-Opener-Policy: same-origin and " +
+                        "Cross-Origin-Embedder-Policy: require-corp headers",
+                    OcctErrorCode.KernelError,
+                );
+            }
+            return true;
+        }
+        const wasmWithoutThreaded =
+            (options?.wasm ?? options?.wasmUrl ?? options?.wasmPath) !== undefined &&
+            options?.wasmThreaded === undefined;
+        // Node has SharedArrayBuffer and no crossOriginIsolated.
+        const isolated = (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated ?? shared;
+        return shared && isolated && !wasmWithoutThreaded;
+    }
+
+    /** Whether this kernel runs the threaded build. See {@link InitOptions.threads}. */
+    get threaded(): boolean {
+        return this.#threaded;
     }
 
     // =======================================================================
@@ -1251,14 +1336,14 @@ export class OcctKernel {
             const raw = this.#raw.wireframe(shape, deflection);
             try {
                 const points = new Float32Array(
-                    this.#module.HEAPF32.buffer.slice(
+                    this.#copyHeap(
                         raw.getPointsPtr(),
                         raw.getPointsPtr() + raw.pointCount * 4,
                     ),
                 );
                 const edgeCount = raw.edgeGroupCount / 3;
                 const edgeGroups = new Int32Array(
-                    this.#module.HEAP32.buffer.slice(
+                    this.#copyHeap(
                         raw.getEdgeGroupsPtr(),
                         raw.getEdgeGroupsPtr() + raw.edgeGroupCount * 4,
                     ),
@@ -1299,25 +1384,25 @@ export class OcctKernel {
                 const raw = this.#raw.meshBatch(ids, linDefl, angDefl);
                 try {
                     const positions = new Float32Array(
-                        this.#module.HEAPF32.buffer.slice(
+                        this.#copyHeap(
                             raw.getPositionsPtr(),
                             raw.getPositionsPtr() + raw.positionCount * 4,
                         ),
                     );
                     const normals = new Float32Array(
-                        this.#module.HEAPF32.buffer.slice(
+                        this.#copyHeap(
                             raw.getNormalsPtr(),
                             raw.getNormalsPtr() + raw.normalCount * 4,
                         ),
                     );
                     const indices = new Uint32Array(
-                        this.#module.HEAPU32.buffer.slice(
+                        this.#copyHeap(
                             raw.getIndicesPtr(),
                             raw.getIndicesPtr() + raw.indexCount * 4,
                         ),
                     );
                     const shapeOffsets = new Int32Array(
-                        this.#module.HEAP32.buffer.slice(
+                        this.#copyHeap(
                             raw.getShapeOffsetsPtr(),
                             raw.getShapeOffsetsPtr() + raw.shapeCount * 4 * 4,
                         ),
@@ -2218,6 +2303,22 @@ export class OcctKernel {
     // above it, the single bulk copy wins (measured ~50% of cost on point methods).
     static readonly #BULK_THRESHOLD = 64;
 
+    // The current buffer of the linear memory. Read it after each call that can
+    // allocate: growth replaces it, and in the threaded build another thread can
+    // grow it without a change to the module's HEAP* views.
+    #heap(): ArrayBufferLike {
+        return this.#module.wasmMemory.buffer;
+    }
+
+    // Copy bytes [start, end) of the heap into a new, unshared ArrayBuffer. In the
+    // threaded build the heap is a SharedArrayBuffer, which a caller can not transfer
+    // to another thread, and which TextDecoder and some WebGL paths refuse.
+    #copyHeap(start: number, end: number): ArrayBuffer {
+        const out = new ArrayBuffer(end - start);
+        new Uint8Array(out).set(new Uint8Array(this.#heap(), start, end - start));
+        return out;
+    }
+
     #makeVector<T extends { push_back(v: number): void }>(
         ctor: new () => T,
         values: number[] | ShapeHandle[],
@@ -2234,7 +2335,7 @@ export class OcctKernel {
     // fresh typed-array view is layered over it at the malloc'd (aligned) offset.
     #bulkF64(values: ArrayLike<number>): EmbindVectorF64 {
         const ptr = this.#raw.allocBytes(values.length * 8);
-        new Float64Array(this.#module.HEAPU32.buffer, ptr, values.length).set(values);
+        new Float64Array(this.#heap(), ptr, values.length).set(values);
         try {
             return this.#raw.vectorF64FromHeap(ptr, values.length);
         } finally {
@@ -2244,7 +2345,7 @@ export class OcctKernel {
 
     #bulkU32(values: ArrayLike<number>): EmbindVectorU32 {
         const ptr = this.#raw.allocBytes(values.length * 4);
-        new Uint32Array(this.#module.HEAPU32.buffer, ptr, values.length).set(values);
+        new Uint32Array(this.#heap(), ptr, values.length).set(values);
         try {
             return this.#raw.vectorU32FromHeap(ptr, values.length);
         } finally {
@@ -2254,7 +2355,7 @@ export class OcctKernel {
 
     #bulkI32(values: ArrayLike<number>): EmbindVectorI32 {
         const ptr = this.#raw.allocBytes(values.length * 4);
-        new Int32Array(this.#module.HEAPU32.buffer, ptr, values.length).set(values);
+        new Int32Array(this.#heap(), ptr, values.length).set(values);
         try {
             return this.#raw.vectorI32FromHeap(ptr, values.length);
         } finally {
@@ -2281,8 +2382,7 @@ export class OcctKernel {
             return out;
         }
         const ptr = vec.dataPtr();
-        const heap = this.#module.HEAPU32.buffer as ArrayBuffer;
-        const buffer = heap.slice(ptr, ptr + count * HeapArray.BYTES_PER_ELEMENT);
+        const buffer = this.#copyHeap(ptr, ptr + count * HeapArray.BYTES_PER_ELEMENT);
         return Array.from(new HeapArray(buffer));
     }
 
@@ -2426,19 +2526,19 @@ export class OcctKernel {
         const vertexCount = raw.positionCount / 3;
         const triangleCount = raw.indexCount / 3;
         const positions = new Float32Array(
-            this.#module.HEAPF32.buffer.slice(
+            this.#copyHeap(
                 raw.getPositionsPtr(),
                 raw.getPositionsPtr() + raw.positionCount * 4,
             ),
         );
         const normals = new Float32Array(
-            this.#module.HEAPF32.buffer.slice(
+            this.#copyHeap(
                 raw.getNormalsPtr(),
                 raw.getNormalsPtr() + raw.normalCount * 4,
             ),
         );
         const indices = new Uint32Array(
-            this.#module.HEAPU32.buffer.slice(
+            this.#copyHeap(
                 raw.getIndicesPtr(),
                 raw.getIndicesPtr() + raw.indexCount * 4,
             ),
@@ -2451,7 +2551,7 @@ export class OcctKernel {
             const mesh = this.#extractMeshFromRaw(raw);
             if (raw.faceGroupCount > 0) {
                 mesh.faceGroups = new Int32Array(
-                    this.#module.HEAP32.buffer.slice(
+                    this.#copyHeap(
                         raw.getFaceGroupsPtr(),
                         raw.getFaceGroupsPtr() + raw.faceGroupCount * 4,
                     ),

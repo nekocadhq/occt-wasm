@@ -27,7 +27,9 @@ use std::path::{Path, PathBuf};
 use xshell::{Shell, cmd};
 
 use crate::build::WASM_STACK_SIZE;
-use crate::util::{bytes_to_mb, find_occt_lib_dir, find_wasm_opt, project_root};
+use crate::util::{
+    bytes_to_mb, ccache_env, find_occt_lib_dir, find_wasm_opt, project_root, run_parallel,
+};
 
 /// OCCT static libs not exercised by the WASI build's call graph. Excluding
 /// them shrinks the .wasm output without affecting functionality. This list is
@@ -36,9 +38,9 @@ use crate::util::{bytes_to_mb, find_occt_lib_dir, find_wasm_opt, project_root};
 const EXCLUDED_LIBS: &[&str] = &["libTKDraw.a"];
 
 /// Step 1: Compile facade C++ files for the C-ABI WASI build.
-fn compile_facade(sh: &Shell, root: &Path) -> Result<Vec<PathBuf>> {
+fn compile_facade(root: &Path) -> Result<Vec<PathBuf>> {
     let build_dir = root.join("build-wasi");
-    sh.create_dir(&build_dir)?;
+    std::fs::create_dir_all(&build_dir)?;
 
     let occt_inc = root.join("occt/build/include/opencascade");
     if !occt_inc.exists() {
@@ -67,7 +69,9 @@ fn compile_facade(sh: &Shell, root: &Path) -> Result<Vec<PathBuf>> {
     }
 
     sources.sort();
+    let ccache = ccache_env(root);
     let mut objects = Vec::new();
+    let mut compiles = Vec::new();
 
     for src in &sources {
         let name = src.file_stem().context("no file stem")?.to_string_lossy();
@@ -80,18 +84,29 @@ fn compile_facade(sh: &Shell, root: &Path) -> Result<Vec<PathBuf>> {
         };
         let obj = build_dir.join(format!("{prefix}{name}.o"));
 
-        eprintln!("  Compiling {name}.cpp...");
-        cmd!(
-            sh,
-            "em++ -std=c++17 -fwasm-exceptions -O3 -msimd128
-            -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS
-            -I{occt_inc} -I{facade_inc}
-            -w -c {src} -o {obj}"
-        )
-        .run()?;
-
+        let mut command = std::process::Command::new("em++");
+        command
+            .args([
+                "-std=c++17",
+                "-fwasm-exceptions",
+                "-O3",
+                "-msimd128",
+                "-DIGNORE_NO_ATOMICS=1",
+                "-DOCCT_NO_PLUGINS",
+            ])
+            .arg("-I")
+            .arg(&occt_inc)
+            .arg("-I")
+            .arg(&facade_inc)
+            .args(["-w", "-c"])
+            .arg(src)
+            .arg("-o")
+            .arg(&obj)
+            .envs(ccache.iter().map(|(k, v)| (k, v)));
+        compiles.push((format!("{prefix}{name}.cpp"), command));
         objects.push(obj);
     }
+    run_parallel(compiles)?;
 
     Ok(objects)
 }
@@ -234,7 +249,7 @@ pub fn build_wasi(release: bool) -> Result<()> {
     }
 
     eprintln!("Step 1: Compiling facade...");
-    let objects = compile_facade(&sh, &root)?;
+    let objects = compile_facade(&root)?;
     eprintln!("  {} object files ready.", objects.len());
 
     let wasm = link(&root, &objects, release)?;

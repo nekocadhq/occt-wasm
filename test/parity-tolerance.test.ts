@@ -19,6 +19,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach } from "vitest";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { WASM_STEM } from "./wasm-variant.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -28,8 +29,8 @@ let Module: any;
 let kernel: any;
 
 beforeAll(async () => {
-    const jsPath = resolve(__dirname, "../dist/occt-wasm.js");
-    const wasmPath = resolve(__dirname, "../dist/occt-wasm.wasm");
+    const jsPath = resolve(__dirname, `../dist/${WASM_STEM}.js`);
+    const wasmPath = resolve(__dirname, `../dist/${WASM_STEM}.wasm`);
     const createModule = (await import(jsPath)).default;
     Module = await createModule({
         locateFile: (path: string) =>

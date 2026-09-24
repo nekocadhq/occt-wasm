@@ -1,8 +1,12 @@
 # Build artifacts
 dist/
 build/
+build-mt/
+build-wasi/
 occt/build/
+occt/build-mt/
 target/
+graft/
 node_modules/
 ts/node_modules/
 ts/dist/

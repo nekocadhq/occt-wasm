@@ -858,6 +858,11 @@ return store(maker.Shape());",
         return_type: ReturnType::ShapeId,
     },
     // ── Transforms ────────────────────────────────────────────────
+    // A rigid transform passes `false` for the copy of BRepBuilderAPI_Transform:
+    // the result shares the geometry of the input and differs only in its
+    // location, which costs almost nothing, and one triangulation serves both.
+    // OCCT still copies when the transform scales or mirrors, so `scale` and
+    // `mirror` keep `true` only to say so.
     MethodSpec {
         name: "translate",
         kind: MethodKind::SetupShape,
@@ -868,7 +873,7 @@ return store(maker.Shape());",
             FacadeParam::Double("dz"),
         ],
         occt_class: "BRepBuilderAPI_Transform",
-        ctor_args: "get(id), trsf, true",
+        ctor_args: "get(id), trsf, false",
         setup_code: "gp_Trsf trsf;\ntrsf.SetTranslation(gp_Vec(dx, dy, dz));",
         includes: &["gp_Trsf.hxx", "gp_Vec.hxx"],
         category: "transforms",
@@ -888,7 +893,7 @@ return store(maker.Shape());",
             FacadeParam::Double("angleRad"),
         ],
         occt_class: "BRepBuilderAPI_Transform",
-        ctor_args: "get(id), trsf, true",
+        ctor_args: "get(id), trsf, false",
         setup_code: "gp_Trsf trsf;\ntrsf.SetRotation(gp_Ax1(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz)), angleRad);",
         includes: &["gp_Trsf.hxx", "gp_Ax1.hxx", "gp_Pnt.hxx", "gp_Dir.hxx"],
         category: "transforms",
@@ -965,7 +970,7 @@ for (int i = 1; i < count; i++) {
     gp_Trsf trsf;
     gp_Vec offset = step.Multiplied(static_cast<double>(i));
     trsf.SetTranslation(offset);
-    BRepBuilderAPI_Transform xform(original, trsf, true);
+    BRepBuilderAPI_Transform xform(original, trsf, false);
     builder.Add(compound, xform.Shape());
 }
 return store(compound);",
@@ -996,7 +1001,7 @@ double stepAngle = angle / static_cast<double>(count);
 for (int i = 1; i < count; i++) {
     gp_Trsf trsf;
     trsf.SetRotation(axis, stepAngle * static_cast<double>(i));
-    BRepBuilderAPI_Transform xform(original, trsf, true);
+    BRepBuilderAPI_Transform xform(original, trsf, false);
     builder.Add(compound, xform.Shape());
 }
 return store(compound);",
@@ -1017,7 +1022,7 @@ if (matrix.size() != 12) {
 gp_Trsf trsf;
 trsf.SetValues(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5], matrix[6],
                matrix[7], matrix[8], matrix[9], matrix[10], matrix[11]);
-BRepBuilderAPI_Transform maker(get(id), trsf, true);
+BRepBuilderAPI_Transform maker(get(id), trsf, false);
 return store(maker.Shape());",
         includes: &["gp_Trsf.hxx", "BRepBuilderAPI_Transform.hxx"],
         category: "transforms",
@@ -1080,7 +1085,7 @@ results.reserve(ids.size());
 for (size_t i = 0; i < ids.size(); i++) {
     gp_Trsf trsf;
     trsf.SetTranslation(gp_Vec(offsets[i * 3], offsets[i * 3 + 1], offsets[i * 3 + 2]));
-    BRepBuilderAPI_Transform maker(get(ids[i]), trsf, true);
+    BRepBuilderAPI_Transform maker(get(ids[i]), trsf, false);
     results.push_back(store(maker.Shape()));
 }
 return results;",
@@ -1127,7 +1132,7 @@ for (size_t i = 0; i < ids.size(); i++) {
     trsf.SetValues(matrices[o], matrices[o+1], matrices[o+2], matrices[o+3],
                    matrices[o+4], matrices[o+5], matrices[o+6], matrices[o+7],
                    matrices[o+8], matrices[o+9], matrices[o+10], matrices[o+11]);
-    BRepBuilderAPI_Transform maker(get(ids[i]), trsf, true);
+    BRepBuilderAPI_Transform maker(get(ids[i]), trsf, false);
     if (!maker.IsDone()) throw std::runtime_error(\"transformBatch: failed on shape \" + std::to_string(i));
     results.push_back(store(maker.Shape()));
 }
@@ -1153,7 +1158,7 @@ for (size_t i = 0; i < ids.size(); i++) {
     gp_Trsf trsf;
     trsf.SetRotation(gp_Ax1(gp_Pnt(params[o], params[o+1], params[o+2]),
                              gp_Dir(params[o+3], params[o+4], params[o+5])), params[o+6]);
-    BRepBuilderAPI_Transform maker(get(ids[i]), trsf, true);
+    BRepBuilderAPI_Transform maker(get(ids[i]), trsf, false);
     results.push_back(store(maker.Shape()));
 }
 return results;",
@@ -4325,7 +4330,7 @@ return result;",
 const auto& shape = get(id);
 
 // Mesh the shape first
-BRepMesh_IncrementalMesh mesher(shape, linearDeflection, false, 0.5, false);
+BRepMesh_IncrementalMesh mesher(shape, linearDeflection, false, 0.5, meshInParallel(shape));
 
 StlAPI_Writer writer;
 writer.ASCIIMode() = ascii;
@@ -4973,7 +4978,7 @@ int totalTris = 0;
 for (size_t si = 0; si < ids.size(); si++) {
     const auto& shape = get(ids[si]);
     BRepMesh_IncrementalMesh mesher(shape, linearDeflection, false, angularDeflection,
-                                    false);
+                                    meshInParallel(shape));
 
     int shapeNodes = 0;
     int shapeTris = 0;

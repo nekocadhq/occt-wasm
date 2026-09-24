@@ -11,6 +11,7 @@ import { resolve, dirname } from "node:path";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { OcctKernel as OcctKernelType, ShapeHandle } from "../ts/src/index.ts";
+import { WASM_STEM } from "./wasm-variant.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -21,8 +22,8 @@ let OcctErrorCode: any;
 let TransitionMode: any;
 let JoinType: any;
 let BooleanOp: any;
-const jsPath = resolve(__dirname, "../dist/occt-wasm.js");
-const wasmPath = resolve(__dirname, "../dist/occt-wasm.wasm");
+const jsPath = resolve(__dirname, `../dist/${WASM_STEM}.js`);
+const wasmPath = resolve(__dirname, `../dist/${WASM_STEM}.wasm`);
 
 beforeAll(async () => {
     const createModule = (await import(jsPath)).default;

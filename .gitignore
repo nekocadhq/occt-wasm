@@ -9,6 +9,7 @@ node_modules/
 
 # C++ / CMake build
 occt/build/
+occt/build-mt/
 facade/generated/
 *.o
 *.a

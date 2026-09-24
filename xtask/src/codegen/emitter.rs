@@ -505,11 +505,43 @@ fn emit_helper_functions(buf: &mut String, methods: &[&MethodSpec]) {
     }
 }
 
-/// Generate the contents of `facade/generated/kernel.cpp`.
-#[allow(clippy::too_many_lines)]
+/// Generate the whole facade implementation as one translation unit.
+///
+/// The build does not compile this: [`emit_kernel_parts`] divides the same code
+/// into one file for each category. The tests read it, because one string is
+/// easier to search.
+#[cfg(test)]
 pub fn emit_kernel(methods: &[&MethodSpec]) -> String {
     let mut buf = String::with_capacity(4096);
+    emit_kernel_preamble(&mut buf, methods);
+    for (category, specs) in group_by_category(methods) {
+        emit_category(&mut buf, category, &specs);
+    }
+    buf.trim_end().to_owned() + "\n"
+}
 
+/// Generate `facade/generated/kernel_<category>.cpp`, one file for each
+/// category: the name of the category, and the contents of its file.
+///
+/// One file compiles in about the time of the OCCT headers, so the files
+/// compile in parallel, and a change to one category compiles only that file
+/// again. Each file gets every include and every helper: the helpers are
+/// `static`, and a custom body can use an include that another method asks for.
+pub fn emit_kernel_parts(methods: &[&MethodSpec]) -> Vec<(String, String)> {
+    let mut preamble = String::with_capacity(8192);
+    emit_kernel_preamble(&mut preamble, methods);
+    group_by_category(methods)
+        .into_iter()
+        .map(|(category, specs)| {
+            let mut buf = preamble.clone();
+            emit_category(&mut buf, category, &specs);
+            (category.to_owned(), buf.trim_end().to_owned() + "\n")
+        })
+        .collect()
+}
+
+/// The start of each facade file: the includes and the helper functions.
+fn emit_kernel_preamble(buf: &mut String, methods: &[&MethodSpec]) {
     // Header.
     let _ = writeln!(
         buf,
@@ -541,35 +573,26 @@ pub fn emit_kernel(methods: &[&MethodSpec]) -> String {
     let _ = writeln!(buf);
 
     // Emit helper functions needed by generated methods.
-    emit_helper_functions(&mut buf, methods);
+    emit_helper_functions(buf, methods);
+}
 
-    // Methods grouped by category.
-    let groups = group_by_category(methods);
-    for (i, (category, specs)) in groups.iter().enumerate() {
-        let _ = writeln!(buf, "// === {category} ===");
+/// The methods of one category.
+fn emit_category(buf: &mut String, category: &str, specs: &[&MethodSpec]) {
+    let _ = writeln!(buf, "// === {category} ===");
+    let _ = writeln!(buf);
+
+    for spec in specs {
+        match spec.kind {
+            MethodKind::SimpleShape => emit_simple_shape(buf, spec),
+            MethodKind::BooleanOp => emit_boolean_op(buf, spec),
+            MethodKind::FilletLike => emit_fillet_like(buf, spec),
+            MethodKind::SetupShape => emit_setup_shape(buf, spec),
+            MethodKind::CustomBody => emit_custom_body(buf, spec),
+            MethodKind::CustomBodyRaw => emit_custom_body_raw(buf, spec),
+            MethodKind::Skip => {}
+        }
         let _ = writeln!(buf);
-
-        for spec in specs {
-            match spec.kind {
-                MethodKind::SimpleShape => emit_simple_shape(&mut buf, spec),
-                MethodKind::BooleanOp => emit_boolean_op(&mut buf, spec),
-                MethodKind::FilletLike => emit_fillet_like(&mut buf, spec),
-                MethodKind::SetupShape => emit_setup_shape(&mut buf, spec),
-                MethodKind::CustomBody => emit_custom_body(&mut buf, spec),
-                MethodKind::CustomBodyRaw => emit_custom_body_raw(&mut buf, spec),
-                MethodKind::Skip => {}
-            }
-            let _ = writeln!(buf);
-        }
-
-        // Blank line between category groups, but not after the last one.
-        if i + 1 < groups.len() {
-            // Already have a trailing newline from the last method.
-        }
     }
-
-    // Trim trailing whitespace.
-    buf.trim_end().to_owned() + "\n"
 }
 
 /// Generate the contents of `facade/generated/bindings.cpp` as a reference

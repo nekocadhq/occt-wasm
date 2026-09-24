@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { WASM_STEM } from "./wasm-variant.js";
 
 // Load the Emscripten-generated module
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -10,8 +11,8 @@ let kernel: any;
 
 beforeAll(async () => {
     // Import the ES module factory
-    const wasmPath = resolve(__dirname, "../dist/occt-wasm.wasm");
-    const jsPath = resolve(__dirname, "../dist/occt-wasm.js");
+    const wasmPath = resolve(__dirname, `../dist/${WASM_STEM}.wasm`);
+    const jsPath = resolve(__dirname, `../dist/${WASM_STEM}.js`);
 
     // Dynamic import of the Emscripten module
     const createOcctWasm = (await import(jsPath)).default;

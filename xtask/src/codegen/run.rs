@@ -16,7 +16,7 @@ use crate::util::project_root;
 /// Run the facade code generator.
 ///
 /// Reads method specs from `config`, emits C++ via `emitter`, and writes
-/// the output to `facade/generated/kernel.cpp`, `bindings.cpp`,
+/// the output to `facade/generated/kernel_<category>.cpp`, `bindings.cpp`,
 /// `wasi_exports.cpp`, and `crate/src/kernel_generated.rs`.
 pub fn run() -> Result<()> {
     let root = project_root()?;
@@ -61,16 +61,35 @@ pub fn run() -> Result<()> {
     }
 
     // Emit C++ files (Embind target)
-    let kernel_cpp = emitter::emit_kernel(&generable);
+    let kernel_parts = emitter::emit_kernel_parts(&generable);
     let bindings_cpp = emitter::emit_bindings(&generable);
 
-    let kernel_path = facade_out.join("kernel.cpp");
+    // Remove the facade files of a category that is gone, and the single
+    // kernel.cpp that came before the division into categories.
+    let part_names: Vec<String> = kernel_parts
+        .iter()
+        .map(|(category, _)| format!("kernel_{category}.cpp"))
+        .collect();
+    for entry in std::fs::read_dir(&facade_out)?.filter_map(Result::ok) {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let is_kernel = name.starts_with("kernel") && path.extension().is_some_and(|e| e == "cpp");
+        if is_kernel && !part_names.contains(&name) {
+            std::fs::remove_file(&path).with_context(|| format!("failed to remove {name}"))?;
+        }
+    }
+    for ((_, contents), name) in kernel_parts.iter().zip(&part_names) {
+        let path = facade_out.join(name);
+        std::fs::write(&path, contents).with_context(|| format!("failed to write {name}"))?;
+    }
+    eprintln!(
+        "  Wrote {} kernel_<category>.cpp files to {}",
+        part_names.len(),
+        facade_out.display()
+    );
+
     let bindings_path = facade_out.join("bindings.cpp");
-
-    std::fs::write(&kernel_path, &kernel_cpp).context("failed to write kernel.cpp")?;
     std::fs::write(&bindings_path, &bindings_cpp).context("failed to write bindings.cpp")?;
-
-    eprintln!("  Wrote {}", kernel_path.display());
     eprintln!("  Wrote {}", bindings_path.display());
 
     // The "marshal" helpers (allocBytes/freeBytes/vector*FromHeap) exist only to
