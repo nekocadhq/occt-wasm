@@ -80,6 +80,7 @@
 #include <Geom_BSplineSurface.hxx>
 #include <Geom_BezierCurve.hxx>
 #include <Geom_Circle.hxx>
+#include <Geom_ConicalSurface.hxx>
 #include <Geom_Curve.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom_Ellipse.hxx>
@@ -1637,6 +1638,47 @@ uint32_t OcctKernel::makeHelixWireHanded(double px, double py, double pz, double
         return store(wire);
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("makeHelixWireHanded: ") + e.what());
+    }
+}
+
+uint32_t OcctKernel::makeConicalHelixWire(double px, double py, double pz, double dx, double dy, double dz, double pitch, double height, double radius, double semiAngle, bool leftHanded) {
+    try {
+        if (!(std::abs(semiAngle) > 1.0e-9) || !(std::abs(semiAngle) < M_PI / 2.0)) {
+            throw std::runtime_error("makeConicalHelixWire: the semi-angle must be between 0 and pi/2, not 0");
+        }
+        if (!(radius > 0.0) || !(radius + height * std::tan(semiAngle) > 0.0)) {
+            throw std::runtime_error("makeConicalHelixWire: the cone reaches its apex inside the helix");
+        }
+        gp_Ax3 ax3(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz));
+        Handle(Geom_ConicalSurface) cone = new Geom_ConicalSurface(ax3, semiAngle, radius);
+        
+        // The cone is P(u, v) = O + (radius + v sin a)(cos u X + sin u Y) + v cos a Z,
+        // thus v runs along the slant. A climb of `pitch` along the axis per turn is a
+        // line in (u, v) of slope pitch / (2 pi cos a).
+        double slope = pitch / (2.0 * M_PI * std::cos(semiAngle));
+        double nTurns = height / pitch;
+        // gp_Dir2d normalizes the direction, so scale the parameter range by its length.
+        double dirLen = std::sqrt(1.0 + slope * slope);
+        double uMax = nTurns * 2.0 * M_PI * dirLen;
+        
+        Handle(Geom2d_Line) line2d =
+            new Geom2d_Line(gp_Pnt2d(0, 0), gp_Dir2d(leftHanded ? -1.0 : 1.0, slope));
+        
+        BRepBuilderAPI_MakeEdge edgeMaker(line2d, cone, 0.0, uMax);
+        if (!edgeMaker.IsDone()) {
+            throw std::runtime_error("makeConicalHelixWire: edge construction failed");
+        }
+        BRepBuilderAPI_MakeWire wireMaker(edgeMaker.Edge());
+        if (!wireMaker.IsDone()) {
+            throw std::runtime_error("makeConicalHelixWire: wire construction failed");
+        }
+        TopoDS_Shape wire = wireMaker.Shape();
+        if (!BRepLib::BuildCurves3d(wire, 1.0e-6, GeomAbs_C1, 14, 2000)) {
+            throw std::runtime_error("makeConicalHelixWire: 3D curve approximation failed");
+        }
+        return store(wire);
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("makeConicalHelixWire: ") + e.what());
     }
 }
 

@@ -796,6 +796,31 @@ export class OcctKernel {
         );
     }
 
+    /**
+     * A helix on a cone, for a tapered thread. The radius is `radius` at
+     * `origin` and changes by tan(`semiAngle`) per unit of height along
+     * `axis`: a positive angle widens it, a negative one narrows it. `pitch`
+     * is the climb along the axis per turn, as for
+     * {@link OcctKernel.makeHelixWireHanded}.
+     */
+    makeConicalHelixWire(
+        origin: Vec3,
+        axis: Vec3,
+        pitch: number,
+        height: number,
+        radius: number,
+        semiAngle: number,
+        leftHanded = false,
+    ): ShapeHandle {
+        return wrap("makeConicalHelixWire", () =>
+            handle(this.#raw.makeConicalHelixWire(
+                origin.x, origin.y, origin.z,
+                axis.x, axis.y, axis.z,
+                pitch, height, radius, semiAngle, leftHanded,
+            )),
+        );
+    }
+
     makeWire(edges: ShapeHandle[]): ShapeHandle {
         return wrap("makeWire", () => {
             return this.#withU32(edges, (vec) => handle(this.#raw.makeWire(vec)));

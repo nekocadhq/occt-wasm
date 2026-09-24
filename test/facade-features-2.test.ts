@@ -635,3 +635,50 @@ describe("makeHelixWireHanded", () => {
     expect(kernel.getVolume(solid)).toBeGreaterThan(0);
   });
 });
+
+describe("makeConicalHelixWire", () => {
+  const ORIGIN = { x: 0, y: 0, z: 0 };
+  const AXIS = { x: 0, y: 0, z: 1 };
+  const PITCH = 2;
+  const HEIGHT = 10; // five turns
+  const RADIUS = 10;
+  // The taper of a pipe thread: 1 in 16 on the diameter.
+  const SEMI = Math.atan(1 / 32);
+
+  // The pcurve is a line in the angle of the cone, so frac maps straight onto the turns.
+  function sample(wire: number, frac: number) {
+    const { first, last } = kernel.curveParameters(wire);
+    return kernel.curvePointAtParam(wire, first + (last - first) * frac);
+  }
+
+  it("climbs one pitch per turn and widens by tan(semiAngle) per unit of height", () => {
+    const wire = kernel.makeConicalHelixWire(ORIGIN, AXIS, PITCH, HEIGHT, RADIUS, SEMI);
+    expect(kernel.getShapeType(wire)).toBe("wire");
+    for (const frac of [0, 0.1, 0.25, 0.5, 0.8, 1]) {
+      const p = sample(wire, frac);
+      expect(p.z).toBeCloseTo(HEIGHT * frac, 4);
+      expect(Math.hypot(p.x, p.y)).toBeCloseTo(RADIUS + p.z * Math.tan(SEMI), 4);
+    }
+    // A quarter of a turn is a climb of a quarter of the pitch, and lands on +Y.
+    const quarter = sample(wire, 0.25 / 5);
+    expect(quarter.x).toBeCloseTo(0, 4);
+    expect(quarter.z).toBeCloseTo(PITCH / 4, 4);
+  });
+
+  it("narrows with a negative semi-angle, and winds the other way when left-handed", () => {
+    const right = kernel.makeConicalHelixWire(ORIGIN, AXIS, PITCH, HEIGHT, RADIUS, -SEMI);
+    const left = kernel.makeConicalHelixWire(ORIGIN, AXIS, PITCH, HEIGHT, RADIUS, -SEMI, true);
+    const end = sample(right, 1);
+    expect(Math.hypot(end.x, end.y)).toBeCloseTo(RADIUS - HEIGHT * Math.tan(SEMI), 4);
+    const r = sample(right, 0.05);
+    const l = sample(left, 0.05);
+    expect(l.x).toBeCloseTo(r.x, 4);
+    expect(l.y).toBeCloseTo(-r.y, 4);
+    expect(l.z).toBeCloseTo(r.z, 4);
+  });
+
+  it("refuses a flat angle and a cone that closes inside the helix", () => {
+    expect(() => kernel.makeConicalHelixWire(ORIGIN, AXIS, PITCH, HEIGHT, RADIUS, 0)).toThrow();
+    expect(() => kernel.makeConicalHelixWire(ORIGIN, AXIS, PITCH, HEIGHT, 1, -Math.PI / 4)).toThrow();
+  });
+});
