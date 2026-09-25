@@ -28,6 +28,8 @@ cargo xtask build-wasi --release  # after a facade change, so the crate stale-ch
 
 ## Make a release
 
+`./scripts/publish-nekocad.sh` does steps 2 to 4 after you set and commit the version. It checks the npm login first, builds, packs, publishes under the `nekocad` dist-tag, then tags and pushes. `--dry-run` publishes nothing, `--no-build` uses the WASM already in `dist/`, and `--otp CODE` passes a two-factor code. The upstream `scripts/publish.sh` publishes to `latest` and builds one variant only, so do not use it here.
+
 1. Set the version: `cd ts && npm version 5.1.1-nekocad.N --no-git-tag-version`.
 2. Build and test as above, then `cd ts && npm pack` and check the tarball.
 3. Commit the version, tag `v5.1.1-nekocad.N`, and push the branch and the tag.
