@@ -113,6 +113,30 @@ describe("XCAF", () => {
         kernel.xcafClose(docId2);
     });
 
+    it("reads the colors that a STEP file gives each part", () => {
+        // A STEP reader stores a style on the surfaces, not a generic color, so the label must report either kind.
+        const docId = kernel.xcafNewDocument();
+        const box = kernel.makeBox(10, 20, 30);
+        const tag = kernel.xcafAddShape(docId, box);
+        kernel.xcafSetColor(docId, tag, 1.0, 0.0, 0.0);
+        const stepData: string = kernel.xcafExportSTEP(docId);
+        kernel.xcafClose(docId);
+        kernel.release(box);
+
+        const docId2 = kernel.xcafImportSTEP(stepData);
+        const roots = kernel.xcafGetRootLabels(docId2);
+        const tag2 = roots.get(0);
+        roots.delete();
+        const info = kernel.xcafGetLabelInfo(docId2, tag2);
+        expect(info.hasColor).toBe(true);
+        expect(info.r).toBeCloseTo(1, 5);
+        expect(info.g).toBeCloseTo(0, 5);
+        expect(info.b).toBeCloseTo(0, 5);
+
+        if (info.shapeId > 0) kernel.release(info.shapeId);
+        kernel.xcafClose(docId2);
+    });
+
     it("exports glTF binary", () => {
         const docId = kernel.xcafNewDocument();
         const box = kernel.makeBox(10, 20, 30);

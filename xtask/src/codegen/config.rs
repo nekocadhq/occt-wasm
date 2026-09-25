@@ -5627,9 +5627,10 @@ if (label.FindAttribute(TDataStd_Name::GetID(), nameAttr)) {
     info.name = TCollection_AsciiString(ext).ToCString();
 }
 
-// Color
+// Color: a STEP reader stores the style of the surfaces, and a document built here stores a generic color.
 Quantity_Color color;
-if (colorTool->GetColor(label, XCAFDoc_ColorGen, color)) {
+if (colorTool->GetColor(label, XCAFDoc_ColorSurf, color)
+    || colorTool->GetColor(label, XCAFDoc_ColorGen, color)) {
     info.hasColor = true;
     info.r = color.Red();
     info.g = color.Green();
