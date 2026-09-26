@@ -1,6 +1,6 @@
 {
   "name": "@nekocad/occt-wasm",
-  "version": "5.1.1-nekocad.6",
+  "version": "5.1.1-nekocad.7",
   "description": "OpenCascade (OCCT) compiled to WebAssembly with a clean TypeScript API",
   "type": "module",
   "exports": {
