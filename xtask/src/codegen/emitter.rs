@@ -65,14 +65,42 @@ fn emit_simple_shape(buf: &mut String, spec: &MethodSpec) {
     let _ = writeln!(buf, "}}");
 }
 
+/// Split `ctor_args` at its top-level commas: `"get(a), get(b)"` gives
+/// `["get(a)", "get(b)"]`.
+fn split_top_level_args(args: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0_i32;
+    let mut start = 0;
+    for (i, c) in args.char_indices() {
+        match c {
+            '(' | '{' | '[' | '<' => depth += 1,
+            ')' | '}' | ']' | '>' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(args[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(args[start..].trim());
+    parts
+}
+
 /// Emit a `BooleanOp` method body.
 ///
-/// The `ctor_args` field in the spec already contains the full expression
-/// (e.g. `"get(a), get(b)"`), so we pass it directly to the OCCT constructor.
+/// The `ctor_args` field holds the object, then the tools (e.g.
+/// `"get(a), get(b)"`). The operator starts empty and builds one time: the
+/// two-shape constructor of OCCT builds at once, and a second `Build()` does
+/// all the work again. `SetNonDestructive` keeps the boolean from raising the
+/// tolerances of its inputs in place, since the caller can use them again.
+/// No `SetUseOBB`: the oriented box of a half-space is empty, and the boolean
+/// then drops it.
 fn emit_boolean_op(buf: &mut String, spec: &MethodSpec) {
     let name = spec.name;
     let cls = spec.occt_class;
     let args = spec.ctor_args;
+    let operands = split_top_level_args(args);
+    let (objects, tools) = operands.split_at(1.min(operands.len()));
 
     let _ = writeln!(
         buf,
@@ -80,7 +108,19 @@ fn emit_boolean_op(buf: &mut String, spec: &MethodSpec) {
         params = param_list(spec.params)
     );
     let _ = writeln!(buf, "    try {{");
-    let _ = writeln!(buf, "        {cls} op({args});");
+    let _ = writeln!(buf, "        NCollection_List<TopoDS_Shape> arguments;");
+    for object in objects {
+        let _ = writeln!(buf, "        arguments.Append({object});");
+    }
+    let _ = writeln!(buf, "        NCollection_List<TopoDS_Shape> tools;");
+    for tool in tools {
+        let _ = writeln!(buf, "        tools.Append({tool});");
+    }
+    let _ = writeln!(buf, "        {cls} op;");
+    let _ = writeln!(buf, "        op.SetArguments(arguments);");
+    let _ = writeln!(buf, "        op.SetTools(tools);");
+    let _ = writeln!(buf, "        op.SetNonDestructive(Standard_True);");
+    let _ = writeln!(buf, "        op.SetRunParallel(Standard_True);");
     let _ = writeln!(buf, "        op.Build();");
     let _ = writeln!(buf, "        if (!op.IsDone() || op.HasErrors()) {{");
     let _ = writeln!(
@@ -306,6 +346,12 @@ fn collect_includes(methods: &[&MethodSpec]) -> BTreeSet<String> {
         }
         for inc in spec.includes {
             includes.insert((*inc).to_owned());
+        }
+
+        // BooleanOp methods give their object and their tools in lists.
+        if matches!(spec.kind, MethodKind::BooleanOp) {
+            includes.insert("NCollection_List.hxx".to_owned());
+            includes.insert("TopoDS_Shape.hxx".to_owned());
         }
 
         // FilletLike methods need TopoDS.hxx for downcasting.
@@ -948,9 +994,37 @@ mod tests {
         let methods: Vec<&MethodSpec> = vec![&FUSE];
         let output = emit_kernel(&methods);
 
-        assert!(output.contains("BRepAlgoAPI_Fuse op(get(a), get(b))"));
+        assert!(output.contains("arguments.Append(get(a));"));
+        assert!(output.contains("tools.Append(get(b));"));
+        assert!(output.contains("record(op, {get(a), get(b)});"));
         assert!(output.contains("op.HasErrors()"));
         assert!(output.contains("boolean operation failed"));
+    }
+
+    #[test]
+    fn kernel_boolean_op_builds_once_and_keeps_its_inputs() {
+        let methods: Vec<&MethodSpec> = vec![&FUSE];
+        let output = emit_kernel(&methods);
+        let body = output
+            .split("uint32_t OcctKernel::fuse(")
+            .nth(1)
+            .expect("fuse body");
+
+        // The two-shape constructor builds at once, so a Build() after it does the work again.
+        assert!(body.contains("BRepAlgoAPI_Fuse op;"));
+        assert_eq!(body.matches("Build()").count(), 1);
+        assert!(body.contains("op.SetArguments(arguments);"));
+        assert!(body.contains("arguments.Append(get(a));"));
+        assert!(body.contains("op.SetTools(tools);"));
+        assert!(body.contains("tools.Append(get(b));"));
+        // Without it, the boolean raises the tolerances of its inputs in place.
+        assert!(body.contains("op.SetNonDestructive(Standard_True);"));
+        assert!(body.contains("op.SetRunParallel(Standard_True);"));
+        // The oriented box of an infinite solid (a half-space) is empty, so OBB drops it: a cut then keeps all.
+        assert!(!body.contains("SetUseOBB"));
+        let set = body.find("SetNonDestructive").expect("set");
+        let build = body.find("op.Build()").expect("build");
+        assert!(set < build);
     }
 
     #[test]

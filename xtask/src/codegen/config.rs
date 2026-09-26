@@ -282,6 +282,7 @@ for (size_t i = 1; i < shapeIds.size(); ++i) {
 BRepAlgoAPI_Fuse fuser;
 fuser.SetArguments(args);
 fuser.SetTools(tools);
+fuser.SetNonDestructive(Standard_True);
 fuser.SetRunParallel(true);
 fuser.SetUseOBB(true);
 fuser.Build();
@@ -361,6 +362,7 @@ for (uint32_t tid : toolIds) {
 BRepAlgoAPI_Cut cutter;
 cutter.SetArguments(args);
 cutter.SetTools(tools);
+cutter.SetNonDestructive(Standard_True);
 cutter.SetRunParallel(true);
 cutter.SetUseOBB(true);
 cutter.Build();
@@ -395,9 +397,13 @@ for (size_t i = 0; i < opCodes.size(); i++) {
     const auto& tool = get(toolIds[i]);
     bool isLast = (i == opCodes.size() - 1);
     Message_ProgressRange progress;
+    NCollection_List<TopoDS_Shape> arguments;
+    arguments.Append(current);
+    NCollection_List<TopoDS_Shape> tools;
+    tools.Append(tool);
     switch (opCodes[i]) {
-    case 0: { BRepAlgoAPI_Fuse op(current, tool, progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: fuse step failed\"); current = op.Shape(); break; }
-    case 1: { BRepAlgoAPI_Cut op(current, tool, progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: cut step failed\"); current = op.Shape(); break; }
+    case 0: { BRepAlgoAPI_Fuse op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: fuse step failed\"); current = op.Shape(); break; }
+    case 1: { BRepAlgoAPI_Cut op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: cut step failed\"); current = op.Shape(); break; }
     case 2: { BRepAlgoAPI_Common op(current, tool, progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: intersect step failed\"); current = op.Shape(); break; }
     default: throw std::runtime_error(\"booleanPipeline: unknown opCode\");
     }
@@ -4810,7 +4816,15 @@ return buildEvolution(maker, resultId, shape, inputFaceHashes, hashUpperBound);"
         setup_code: "\
 const auto& shapeA = get(a);
 const auto& shapeB = get(b);
-BRepAlgoAPI_Fuse op(shapeA, shapeB);
+BRepAlgoAPI_Fuse op;
+NCollection_List<TopoDS_Shape> arguments;
+arguments.Append(shapeA);
+NCollection_List<TopoDS_Shape> tools;
+tools.Append(shapeB);
+op.SetArguments(arguments);
+op.SetTools(tools);
+op.SetNonDestructive(Standard_True);
+op.SetRunParallel(Standard_True);
 op.Build();
 if (!op.IsDone() || op.HasErrors()) {
     throw std::runtime_error(\"fuseWithHistory: operation failed\");
@@ -4842,7 +4856,15 @@ return evo;",
         setup_code: "\
 const auto& shapeA = get(a);
 const auto& shapeB = get(b);
-BRepAlgoAPI_Cut op(shapeA, shapeB);
+BRepAlgoAPI_Cut op;
+NCollection_List<TopoDS_Shape> arguments;
+arguments.Append(shapeA);
+NCollection_List<TopoDS_Shape> tools;
+tools.Append(shapeB);
+op.SetArguments(arguments);
+op.SetTools(tools);
+op.SetNonDestructive(Standard_True);
+op.SetRunParallel(Standard_True);
 op.Build();
 if (!op.IsDone() || op.HasErrors()) {
     throw std::runtime_error(\"cutWithHistory: operation failed\");
@@ -6598,6 +6620,41 @@ mod tests {
                 .contains("maker.AddFacesToRemove(facesToRemove)")
         );
         assert!(!spec.setup_code.contains("MakeThickSolidByJoin"));
+    }
+
+    fn spec(name: &str) -> &'static MethodSpec {
+        target_methods()
+            .iter()
+            .find(|method| method.name == name)
+            .expect("method spec")
+    }
+
+    #[test]
+    fn booleans_build_once_and_keep_their_inputs() {
+        // A two-shape constructor of a boolean builds at once, so a Build() after it does the work again.
+        for name in ["fuseAll", "cutAll", "fuseWithHistory", "cutWithHistory"] {
+            let body = spec(name).setup_code;
+            assert_eq!(body.matches(".Build(").count(), 1, "{name}");
+            assert_eq!(
+                body.matches("SetNonDestructive(Standard_True)").count(),
+                1,
+                "{name}"
+            );
+            assert!(!body.contains("op(shapeA, shapeB)"), "{name}");
+        }
+        let pipeline = spec("booleanPipeline").setup_code;
+        for step in ["case 0:", "case 1:"] {
+            let line = pipeline
+                .lines()
+                .find(|line| line.trim_start().starts_with(step))
+                .expect("step");
+            assert!(line.contains("op; "), "{step}");
+            assert!(
+                line.contains("op.SetNonDestructive(Standard_True);"),
+                "{step}"
+            );
+            assert_eq!(line.matches(".Build(").count(), 1, "{step}");
+        }
     }
 
     #[test]

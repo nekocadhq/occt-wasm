@@ -302,7 +302,15 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 
 uint32_t OcctKernel::fuse(uint32_t a, uint32_t b) {
     try {
-        BRepAlgoAPI_Fuse op(get(a), get(b));
+        NCollection_List<TopoDS_Shape> arguments;
+        arguments.Append(get(a));
+        NCollection_List<TopoDS_Shape> tools;
+        tools.Append(get(b));
+        BRepAlgoAPI_Fuse op;
+        op.SetArguments(arguments);
+        op.SetTools(tools);
+        op.SetNonDestructive(Standard_True);
+        op.SetRunParallel(Standard_True);
         op.Build();
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("fuse: boolean operation failed");
@@ -316,7 +324,15 @@ uint32_t OcctKernel::fuse(uint32_t a, uint32_t b) {
 
 uint32_t OcctKernel::cut(uint32_t a, uint32_t b) {
     try {
-        BRepAlgoAPI_Cut op(get(a), get(b));
+        NCollection_List<TopoDS_Shape> arguments;
+        arguments.Append(get(a));
+        NCollection_List<TopoDS_Shape> tools;
+        tools.Append(get(b));
+        BRepAlgoAPI_Cut op;
+        op.SetArguments(arguments);
+        op.SetTools(tools);
+        op.SetNonDestructive(Standard_True);
+        op.SetRunParallel(Standard_True);
         op.Build();
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("cut: boolean operation failed");
@@ -330,7 +346,15 @@ uint32_t OcctKernel::cut(uint32_t a, uint32_t b) {
 
 uint32_t OcctKernel::common(uint32_t a, uint32_t b) {
     try {
-        BRepAlgoAPI_Common op(get(a), get(b));
+        NCollection_List<TopoDS_Shape> arguments;
+        arguments.Append(get(a));
+        NCollection_List<TopoDS_Shape> tools;
+        tools.Append(get(b));
+        BRepAlgoAPI_Common op;
+        op.SetArguments(arguments);
+        op.SetTools(tools);
+        op.SetNonDestructive(Standard_True);
+        op.SetRunParallel(Standard_True);
         op.Build();
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("common: boolean operation failed");
@@ -344,7 +368,15 @@ uint32_t OcctKernel::common(uint32_t a, uint32_t b) {
 
 uint32_t OcctKernel::section(uint32_t a, uint32_t b) {
     try {
-        BRepAlgoAPI_Section op(get(a), get(b));
+        NCollection_List<TopoDS_Shape> arguments;
+        arguments.Append(get(a));
+        NCollection_List<TopoDS_Shape> tools;
+        tools.Append(get(b));
+        BRepAlgoAPI_Section op;
+        op.SetArguments(arguments);
+        op.SetTools(tools);
+        op.SetNonDestructive(Standard_True);
+        op.SetRunParallel(Standard_True);
         op.Build();
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("section: boolean operation failed");
@@ -381,6 +413,7 @@ uint32_t OcctKernel::fuseAll(std::vector<uint32_t> shapeIds) {
         BRepAlgoAPI_Fuse fuser;
         fuser.SetArguments(args);
         fuser.SetTools(tools);
+        fuser.SetNonDestructive(Standard_True);
         fuser.SetRunParallel(true);
         fuser.SetUseOBB(true);
         fuser.Build();
@@ -445,6 +478,7 @@ uint32_t OcctKernel::cutAll(uint32_t shapeId, std::vector<uint32_t> toolIds) {
         BRepAlgoAPI_Cut cutter;
         cutter.SetArguments(args);
         cutter.SetTools(tools);
+        cutter.SetNonDestructive(Standard_True);
         cutter.SetRunParallel(true);
         cutter.SetUseOBB(true);
         cutter.Build();
@@ -471,9 +505,13 @@ uint32_t OcctKernel::booleanPipeline(uint32_t baseId, std::vector<int> opCodes, 
             const auto& tool = get(toolIds[i]);
             bool isLast = (i == opCodes.size() - 1);
             Message_ProgressRange progress;
+            NCollection_List<TopoDS_Shape> arguments;
+            arguments.Append(current);
+            NCollection_List<TopoDS_Shape> tools;
+            tools.Append(tool);
             switch (opCodes[i]) {
-            case 0: { BRepAlgoAPI_Fuse op(current, tool, progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: fuse step failed"); current = op.Shape(); break; }
-            case 1: { BRepAlgoAPI_Cut op(current, tool, progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: cut step failed"); current = op.Shape(); break; }
+            case 0: { BRepAlgoAPI_Fuse op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: fuse step failed"); current = op.Shape(); break; }
+            case 1: { BRepAlgoAPI_Cut op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: cut step failed"); current = op.Shape(); break; }
             case 2: { BRepAlgoAPI_Common op(current, tool, progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: intersect step failed"); current = op.Shape(); break; }
             default: throw std::runtime_error("booleanPipeline: unknown opCode");
             }

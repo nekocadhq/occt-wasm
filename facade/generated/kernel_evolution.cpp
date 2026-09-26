@@ -317,7 +317,15 @@ EvolutionData OcctKernel::fuseWithHistory(uint32_t a, uint32_t b, std::vector<in
     try {
         const auto& shapeA = get(a);
         const auto& shapeB = get(b);
-        BRepAlgoAPI_Fuse op(shapeA, shapeB);
+        BRepAlgoAPI_Fuse op;
+        NCollection_List<TopoDS_Shape> arguments;
+        arguments.Append(shapeA);
+        NCollection_List<TopoDS_Shape> tools;
+        tools.Append(shapeB);
+        op.SetArguments(arguments);
+        op.SetTools(tools);
+        op.SetNonDestructive(Standard_True);
+        op.SetRunParallel(Standard_True);
         op.Build();
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("fuseWithHistory: operation failed");
@@ -342,7 +350,15 @@ EvolutionData OcctKernel::cutWithHistory(uint32_t a, uint32_t b, std::vector<int
     try {
         const auto& shapeA = get(a);
         const auto& shapeB = get(b);
-        BRepAlgoAPI_Cut op(shapeA, shapeB);
+        BRepAlgoAPI_Cut op;
+        NCollection_List<TopoDS_Shape> arguments;
+        arguments.Append(shapeA);
+        NCollection_List<TopoDS_Shape> tools;
+        tools.Append(shapeB);
+        op.SetArguments(arguments);
+        op.SetTools(tools);
+        op.SetNonDestructive(Standard_True);
+        op.SetRunParallel(Standard_True);
         op.Build();
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("cutWithHistory: operation failed");
