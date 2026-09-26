@@ -428,6 +428,9 @@ class OcctKernel {
     ProjectionData projectEdges(uint32_t shapeId, double ox, double oy, double oz, double dx,
                                 double dy, double dz, double xx, double xy, double xz,
                                 bool hasXAxis);
+    ProjectionData projectEdgesPoly(uint32_t shapeId, double ox, double oy, double oz, double dx,
+                                    double dy, double dz, double xx, double xy, double xz,
+                                    bool hasXAxis, double deflection);
 
     // --- NURBS introspection ---
     NurbsCurveData getNurbsCurveData(uint32_t edgeId);

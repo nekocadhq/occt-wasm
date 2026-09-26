@@ -90,6 +90,8 @@
 #include <HLRAlgo_Projector.hxx>
 #include <HLRBRep_Algo.hxx>
 #include <HLRBRep_HLRToShape.hxx>
+#include <HLRBRep_PolyAlgo.hxx>
+#include <HLRBRep_PolyHLRToShape.hxx>
 #include <IFSelect_ReturnStatus.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>

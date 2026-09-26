@@ -1378,6 +1378,23 @@ describe("projection (HLR)", () => {
         const hasVisible = result.visibleOutline > 0 || result.visibleSmooth > 0 || result.visibleSharp > 0;
         expect(hasVisible).toBe(true);
     });
+
+    it("projectEdgesPoly projects a mesh of a copy into the frame of projectEdges", () => {
+        // Far from the origin, so a shift of the polygon algorithm shows.
+        const box = kernel.translate(kernel.makeBox(10, 20, 30), 500, -300, 200);
+        const exact = kernel.projectEdges(box, 0, 0, 0, 0, 0, 1, 1, 0, 0, true);
+        const fast = kernel.projectEdgesPoly(box, 0, 0, 0, 0, 0, 1, 1, 0, 0, true, 0.1);
+        expect(fast.visibleSharp).toBeGreaterThan(0);
+        const e = kernel.getBoundingBox(exact.visibleSharp, true);
+        const f = kernel.getBoundingBox(fast.visibleSharp, true);
+        for (const key of ["xmin", "ymin", "zmin", "xmax", "ymax", "zmax"]) {
+            expect(f[key]).toBeCloseTo(e[key], 3);
+        }
+        // The box of the view hides its bottom face: four hidden edges.
+        expect(fast.hiddenSharp).toBeGreaterThan(0);
+        // It meshed a copy: the shape that it got has still no mesh.
+        expect(kernel.hasTriangulation(box)).toBe(false);
+    });
 });
 
 // ---------------------------------------------------------------------------

@@ -5390,7 +5390,67 @@ return result;",
         category: "projection",
         return_type: ReturnType::ProjectionData,
     },
-    // ── Kernel (arena management) ──────────────────────────────────
+    MethodSpec {
+        name: "projectEdgesPoly",
+        kind: MethodKind::CustomBody,
+        params: &[
+            FacadeParam::ShapeId("shapeId"),
+            FacadeParam::Double("ox"), FacadeParam::Double("oy"), FacadeParam::Double("oz"),
+            FacadeParam::Double("dx"), FacadeParam::Double("dy"), FacadeParam::Double("dz"),
+            FacadeParam::Double("xx"), FacadeParam::Double("xy"), FacadeParam::Double("xz"),
+            FacadeParam::Bool("hasXAxis"),
+            FacadeParam::Double("deflection"),
+        ],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "\
+// The polygon algorithm projects the triangles of a mesh, so it is fast on a
+// large model, and its edges are short straight lines. It needs a mesh on
+// each face: mesh a copy of the topology, so the mesh of the shape stays.
+BRepBuilderAPI_Copy copier(get(shapeId), false, false);
+TopoDS_Shape shape = copier.Shape();
+BRepMesh_IncrementalMesh mesher(shape, deflection, false, 0.5);
+
+Handle(HLRBRep_PolyAlgo) hlr = new HLRBRep_PolyAlgo();
+hlr->Load(shape);
+
+gp_Pnt origin(ox, oy, oz);
+gp_Dir dir(dx, dy, dz);
+
+gp_Ax2 ax2 = hasXAxis ? gp_Ax2(origin, dir, gp_Dir(xx, xy, xz)) : gp_Ax2(origin, dir);
+
+hlr->Projector(HLRAlgo_Projector(ax2));
+hlr->Update();
+
+HLRBRep_PolyHLRToShape hlrShapes;
+hlrShapes.Update(hlr);
+
+ProjectionData result{};
+
+auto storeIfNotNull = [this](const TopoDS_Shape& s) -> uint32_t {
+    if (s.IsNull())
+        return 0;
+    BRepLib::BuildCurves3d(s);
+    return store(s);
+};
+
+result.visibleOutline = storeIfNotNull(hlrShapes.OutLineVCompound());
+result.visibleSmooth = storeIfNotNull(hlrShapes.Rg1LineVCompound());
+result.visibleSharp = storeIfNotNull(hlrShapes.VCompound());
+result.hiddenOutline = storeIfNotNull(hlrShapes.OutLineHCompound());
+result.hiddenSmooth = storeIfNotNull(hlrShapes.Rg1LineHCompound());
+result.hiddenSharp = storeIfNotNull(hlrShapes.HCompound());
+
+return result;",
+        includes: &[
+            "BRepBuilderAPI_Copy.hxx", "BRepLib.hxx", "BRepMesh_IncrementalMesh.hxx",
+            "HLRAlgo_Projector.hxx", "HLRBRep_PolyAlgo.hxx", "HLRBRep_PolyHLRToShape.hxx",
+            "gp_Ax2.hxx", "gp_Dir.hxx", "gp_Pnt.hxx",
+        ],
+        category: "projection",
+        return_type: ReturnType::ProjectionData,
+    },
+    // ── Kernel (arena management)──────────────────────────────────
     MethodSpec {
         name: "release",
         kind: MethodKind::CustomBody,

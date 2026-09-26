@@ -234,6 +234,8 @@ pub(crate) struct GeneratedFuncs {
     fn_mesh_batch: TypedFunc<(i32, i32, f64, f64), i32>,
     fn_wireframe: TypedFunc<(u32, f64), i32>,
     fn_project_edges: TypedFunc<(u32, f64, f64, f64, f64, f64, f64, f64, f64, f64, i32), i32>,
+    fn_project_edges_poly:
+        TypedFunc<(u32, f64, f64, f64, f64, f64, f64, f64, f64, f64, i32, f64), i32>,
     fn_release: TypedFunc<(u32,), i32>,
     fn_release_all: TypedFunc<(), i32>,
     fn_checkpoint: TypedFunc<(), u32>,
@@ -499,6 +501,8 @@ impl GeneratedFuncs {
             fn_mesh_batch: instance.get_typed_func(&mut store, "occt_mesh_batch")?,
             fn_wireframe: instance.get_typed_func(&mut store, "occt_wireframe")?,
             fn_project_edges: instance.get_typed_func(&mut store, "occt_project_edges")?,
+            fn_project_edges_poly: instance
+                .get_typed_func(&mut store, "occt_project_edges_poly")?,
             fn_release: instance.get_typed_func(&mut store, "occt_release")?,
             fn_release_all: instance.get_typed_func(&mut store, "occt_release_all")?,
             fn_checkpoint: instance.get_typed_func(&mut store, "occt_checkpoint")?,
@@ -4265,6 +4269,44 @@ impl crate::kernel::OcctKernel {
         )?;
         if status < 0 {
             return Err(self.read_last_error("project_edges"));
+        }
+        self.read_projection_result()
+    }
+
+    pub fn project_edges_poly(
+        &mut self,
+        shape_id: ShapeHandle,
+        ox: f64,
+        oy: f64,
+        oz: f64,
+        dx: f64,
+        dy: f64,
+        dz: f64,
+        xx: f64,
+        xy: f64,
+        xz: f64,
+        has_x_axis: bool,
+        deflection: f64,
+    ) -> OcctResult<ProjectionData> {
+        let status = self.generated.fn_project_edges_poly.call(
+            &mut self.store,
+            (
+                shape_id.0,
+                ox,
+                oy,
+                oz,
+                dx,
+                dy,
+                dz,
+                xx,
+                xy,
+                xz,
+                i32::from(has_x_axis),
+                deflection,
+            ),
+        )?;
+        if status < 0 {
+            return Err(self.read_last_error("project_edges_poly"));
         }
         self.read_projection_result()
     }

@@ -90,6 +90,8 @@
 #include <HLRAlgo_Projector.hxx>
 #include <HLRBRep_Algo.hxx>
 #include <HLRBRep_HLRToShape.hxx>
+#include <HLRBRep_PolyAlgo.hxx>
+#include <HLRBRep_PolyHLRToShape.hxx>
 #include <IFSelect_ReturnStatus.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -322,5 +324,50 @@ ProjectionData OcctKernel::projectEdges(uint32_t shapeId, double ox, double oy, 
         return result;
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("projectEdges: ") + e.what());
+    }
+}
+
+ProjectionData OcctKernel::projectEdgesPoly(uint32_t shapeId, double ox, double oy, double oz, double dx, double dy, double dz, double xx, double xy, double xz, bool hasXAxis, double deflection) {
+    try {
+        // The polygon algorithm projects the triangles of a mesh, so it is fast on a
+        // large model, and its edges are short straight lines. It needs a mesh on
+        // each face: mesh a copy of the topology, so the mesh of the shape stays.
+        BRepBuilderAPI_Copy copier(get(shapeId), false, false);
+        TopoDS_Shape shape = copier.Shape();
+        BRepMesh_IncrementalMesh mesher(shape, deflection, false, 0.5);
+        
+        Handle(HLRBRep_PolyAlgo) hlr = new HLRBRep_PolyAlgo();
+        hlr->Load(shape);
+        
+        gp_Pnt origin(ox, oy, oz);
+        gp_Dir dir(dx, dy, dz);
+        
+        gp_Ax2 ax2 = hasXAxis ? gp_Ax2(origin, dir, gp_Dir(xx, xy, xz)) : gp_Ax2(origin, dir);
+        
+        hlr->Projector(HLRAlgo_Projector(ax2));
+        hlr->Update();
+        
+        HLRBRep_PolyHLRToShape hlrShapes;
+        hlrShapes.Update(hlr);
+        
+        ProjectionData result{};
+        
+        auto storeIfNotNull = [this](const TopoDS_Shape& s) -> uint32_t {
+            if (s.IsNull())
+                return 0;
+            BRepLib::BuildCurves3d(s);
+            return store(s);
+        };
+        
+        result.visibleOutline = storeIfNotNull(hlrShapes.OutLineVCompound());
+        result.visibleSmooth = storeIfNotNull(hlrShapes.Rg1LineVCompound());
+        result.visibleSharp = storeIfNotNull(hlrShapes.VCompound());
+        result.hiddenOutline = storeIfNotNull(hlrShapes.OutLineHCompound());
+        result.hiddenSmooth = storeIfNotNull(hlrShapes.Rg1LineHCompound());
+        result.hiddenSharp = storeIfNotNull(hlrShapes.HCompound());
+        
+        return result;
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("projectEdgesPoly: ") + e.what());
     }
 }

@@ -328,6 +328,7 @@ EMSCRIPTEN_BINDINGS(occt_wasm) {
 
         // projection
         .function("projectEdges", &OcctKernel::projectEdges)
+        .function("projectEdgesPoly", &OcctKernel::projectEdgesPoly)
 
         // kernel
         .function("release", &OcctKernel::release)

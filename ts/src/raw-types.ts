@@ -337,6 +337,7 @@ export interface OcctRawKernel {
 
     // Projection
     projectEdges(shapeId: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, xx: number, xy: number, xz: number, hasXAxis: boolean): RawProjectionData;
+    projectEdgesPoly(shapeId: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, xx: number, xy: number, xz: number, hasXAxis: boolean, deflection: number): RawProjectionData;
 
     // Modifiers
     thicken(shapeId: number, thickness: number, tolerance: number): number;

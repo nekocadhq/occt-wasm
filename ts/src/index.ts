@@ -1965,6 +1965,38 @@ export class OcctKernel {
     }
 
     /**
+     * The same projection as {@link projectEdges}, through the triangles of a mesh (`HLRBRep_PolyAlgo`). It is fast on
+     * a large model, and each edge is a chain of straight lines. `deflection` is the chord error of the mesh, in the
+     * units of the model. It meshes a copy, so the mesh of `shape` does not change.
+     */
+    projectEdgesPoly(
+        shape: ShapeHandle,
+        viewOrigin: Vec3,
+        viewDirection: Vec3,
+        xAxis: Vec3 | undefined,
+        deflection: number,
+    ): ProjectionData {
+        return wrap("projectEdgesPoly", () => {
+            const raw = this.#raw.projectEdgesPoly(
+                shape,
+                viewOrigin.x, viewOrigin.y, viewOrigin.z,
+                viewDirection.x, viewDirection.y, viewDirection.z,
+                xAxis?.x ?? 0, xAxis?.y ?? 0, xAxis?.z ?? 0,
+                xAxis !== undefined,
+                deflection,
+            );
+            return {
+                visibleOutline: handle(raw.visibleOutline),
+                visibleSmooth: handle(raw.visibleSmooth),
+                visibleSharp: handle(raw.visibleSharp),
+                hiddenOutline: handle(raw.hiddenOutline),
+                hiddenSmooth: handle(raw.hiddenSmooth),
+                hiddenSharp: handle(raw.hiddenSharp),
+            };
+        });
+    }
+
+    /**
      * Render a single named view of a shape to a standalone SVG string via
      * hidden-line removal. Visible edges are solid, hidden edges dashed.
      */
