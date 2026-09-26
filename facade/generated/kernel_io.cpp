@@ -93,6 +93,12 @@
 #include <HLRBRep_PolyAlgo.hxx>
 #include <HLRBRep_PolyHLRToShape.hxx>
 #include <IFSelect_ReturnStatus.hxx>
+#include <IGESCAFControl_Writer.hxx>
+#include <IGESControl_Controller.hxx>
+#include <IGESControl_Reader.hxx>
+#include <IGESData_GlobalSection.hxx>
+#include <IGESData_IGESModel.hxx>
+#include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
 #include <Message_ProgressRange.hxx>
@@ -126,6 +132,7 @@
 #include <StlAPI_Writer.hxx>
 #include <TCollection_AsciiString.hxx>
 #include <TCollection_ExtendedString.hxx>
+#include <TCollection_HAsciiString.hxx>
 #include <TDF_Label.hxx>
 #include <TDataStd_Name.hxx>
 #include <TDocStd_Application.hxx>
@@ -314,6 +321,41 @@ uint32_t OcctKernel::importStep(const std::string& data) {
         return store(reader.OneShape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("importStep: ") + e.what());
+    }
+}
+
+uint32_t OcctKernel::importIges(const std::string& data) {
+    try {
+        IGESControl_Controller::Init();
+        IGESControl_Reader reader;
+        
+        // IGESControl_Reader needs a file path — write the data to the virtual FS
+        const char* tmpPath = "/tmp/import.igs";
+        {
+            FILE* f = fopen(tmpPath, "w");
+            if (!f) {
+                throw std::runtime_error("importIges: cannot create temp file");
+            }
+            fwrite(data.c_str(), 1, data.size(), f);
+            fclose(f);
+        }
+        
+        IFSelect_ReturnStatus status = reader.ReadFile(tmpPath);
+        std::remove(tmpPath);
+        if (status != IFSelect_RetDone) {
+            throw std::runtime_error("importIges: failed to read IGES data");
+        }
+        
+        // Skip the entities that the file marks as blank, such as construction geometry
+        reader.SetReadVisible(Standard_True);
+        reader.TransferRoots();
+        if (reader.NbShapes() == 0) {
+            throw std::runtime_error("importIges: no shapes found in IGES data");
+        }
+        
+        return store(reader.OneShape());
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("importIges: ") + e.what());
     }
 }
 

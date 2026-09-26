@@ -4415,6 +4415,47 @@ return store(reader.OneShape());",
         return_type: ReturnType::ShapeId,
     },
     MethodSpec {
+        name: "importIges",
+        kind: MethodKind::CustomBody,
+        params: &[FacadeParam::String("data")],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "\
+IGESControl_Controller::Init();
+IGESControl_Reader reader;
+
+// IGESControl_Reader needs a file path — write the data to the virtual FS
+const char* tmpPath = \"/tmp/import.igs\";
+{
+    FILE* f = fopen(tmpPath, \"w\");
+    if (!f) {
+        throw std::runtime_error(\"importIges: cannot create temp file\");
+    }
+    fwrite(data.c_str(), 1, data.size(), f);
+    fclose(f);
+}
+
+IFSelect_ReturnStatus status = reader.ReadFile(tmpPath);
+std::remove(tmpPath);
+if (status != IFSelect_RetDone) {
+    throw std::runtime_error(\"importIges: failed to read IGES data\");
+}
+
+// Skip the entities that the file marks as blank, such as construction geometry
+reader.SetReadVisible(Standard_True);
+reader.TransferRoots();
+if (reader.NbShapes() == 0) {
+    throw std::runtime_error(\"importIges: no shapes found in IGES data\");
+}
+
+return store(reader.OneShape());",
+        includes: &[
+            "IFSelect_ReturnStatus.hxx", "IGESControl_Controller.hxx", "IGESControl_Reader.hxx",
+        ],
+        category: "io",
+        return_type: ReturnType::ShapeId,
+    },
+    MethodSpec {
         name: "exportStep",
         kind: MethodKind::CustomBody,
         params: &[FacadeParam::ShapeId("id")],
@@ -6128,6 +6169,49 @@ return id;",
         return_type: ReturnType::DocId,
     },
     MethodSpec {
+        name: "xcafExportIGES",
+        kind: MethodKind::CustomBody,
+        params: &[FacadeParam::DocId("docId"), FacadeParam::String("unit")],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "\
+auto it = xcafDocs_.find(docId);
+if (it == xcafDocs_.end())
+    throw std::runtime_error(\"xcafExportIGES: invalid document ID\");
+if (unit != \"MM\" && unit != \"IN\")
+    throw std::runtime_error(\"xcafExportIGES: the unit must be MM or IN\");
+
+// The writer takes its unit and its mode from the static parameters. Mode 0 writes trimmed
+// surfaces, which most CAM programs read.
+IGESControl_Controller::Init();
+// The enum of write.iges.unit names the inch INCH
+const char* unitName = unit == \"IN\" ? \"INCH\" : \"MM\";
+if (!Interface_Static::SetCVal(\"write.iges.unit\", unitName) ||
+    !Interface_Static::SetIVal(\"write.iges.brep.mode\", 0))
+    throw std::runtime_error(\"xcafExportIGES: cannot set the unit and the mode\");
+IGESCAFControl_Writer writer;
+IGESData_GlobalSection header = writer.Model()->GlobalSection();
+header.SetSendName(new TCollection_HAsciiString(\"NekoCAD\"));
+writer.Model()->SetGlobalSection(header);
+
+if (!writer.Transfer(it->second.doc)) {
+    throw std::runtime_error(\"xcafExportIGES: transfer failed\");
+}
+
+// Return file path — JS reads the file via Module.FS.readFile()
+std::string tmpPath = \"/tmp/xcaf_export.igs\";
+if (!writer.Write(tmpPath.c_str())) {
+    throw std::runtime_error(\"xcafExportIGES: write failed\");
+}
+return tmpPath;",
+        includes: &[
+            "IGESCAFControl_Writer.hxx", "IGESControl_Controller.hxx", "IGESData_GlobalSection.hxx",
+            "IGESData_IGESModel.hxx", "Interface_Static.hxx", "TCollection_HAsciiString.hxx",
+        ],
+        category: "xcaf",
+        return_type: ReturnType::String,
+    },
+    MethodSpec {
         name: "xcafExportGLTF",
         kind: MethodKind::CustomBody,
         params: &[
@@ -6162,6 +6246,10 @@ NCollection_IndexedDataMap<TCollection_AsciiString, TCollection_AsciiString> fil
 Handle(RWGltf_CafWriter) writer =
     new RWGltf_CafWriter(TCollection_AsciiString(tmpPath.c_str()), Standard_True);
 writer->SetTransformationFormat(RWGltf_WriterTrsfFormat_Compact);
+// glTF is in meters with Y up. A document with no length unit is in millimeters with Z up, so the
+// writer converts both. A document with a length unit of its own keeps it, because Perform reads it.
+writer->ChangeCoordinateSystemConverter().SetInputLengthUnit(0.001);
+writer->ChangeCoordinateSystemConverter().SetInputCoordinateSystem(RWMesh_CoordinateSystem_Zup);
 if (!writer->Perform(it->second.doc, fileInfo, Message_ProgressRange())) {
     throw std::runtime_error(\"xcafExportGLTF: write failed\");
 }

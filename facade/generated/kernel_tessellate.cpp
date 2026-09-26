@@ -93,6 +93,12 @@
 #include <HLRBRep_PolyAlgo.hxx>
 #include <HLRBRep_PolyHLRToShape.hxx>
 #include <IFSelect_ReturnStatus.hxx>
+#include <IGESCAFControl_Writer.hxx>
+#include <IGESControl_Controller.hxx>
+#include <IGESControl_Reader.hxx>
+#include <IGESData_GlobalSection.hxx>
+#include <IGESData_IGESModel.hxx>
+#include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
 #include <Message_ProgressRange.hxx>
@@ -126,6 +132,7 @@
 #include <StlAPI_Writer.hxx>
 #include <TCollection_AsciiString.hxx>
 #include <TCollection_ExtendedString.hxx>
+#include <TCollection_HAsciiString.hxx>
 #include <TDF_Label.hxx>
 #include <TDataStd_Name.hxx>
 #include <TDocStd_Application.hxx>

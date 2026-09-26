@@ -284,6 +284,7 @@ EMSCRIPTEN_BINDINGS(occt_wasm) {
 
         // io
         .function("importStep", &OcctKernel::importStep)
+        .function("importIges", &OcctKernel::importIges)
         .function("exportStep", &OcctKernel::exportStep)
         .function("exportStl", &OcctKernel::exportStl)
         .function("importStl", &OcctKernel::importStl)
@@ -355,6 +356,7 @@ EMSCRIPTEN_BINDINGS(occt_wasm) {
         .function("xcafAddSubShape", &OcctKernel::xcafAddSubShape)
         .function("xcafExportSTEP", &OcctKernel::xcafExportSTEP)
         .function("xcafImportSTEP", &OcctKernel::xcafImportSTEP)
+        .function("xcafExportIGES", &OcctKernel::xcafExportIGES)
         .function("xcafExportGLTF", &OcctKernel::xcafExportGLTF)
 
         // marshal

@@ -93,6 +93,12 @@
 #include <HLRBRep_PolyAlgo.hxx>
 #include <HLRBRep_PolyHLRToShape.hxx>
 #include <IFSelect_ReturnStatus.hxx>
+#include <IGESCAFControl_Writer.hxx>
+#include <IGESControl_Controller.hxx>
+#include <IGESControl_Reader.hxx>
+#include <IGESData_GlobalSection.hxx>
+#include <IGESData_IGESModel.hxx>
+#include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
 #include <Message_ProgressRange.hxx>
@@ -126,6 +132,7 @@
 #include <StlAPI_Writer.hxx>
 #include <TCollection_AsciiString.hxx>
 #include <TCollection_ExtendedString.hxx>
+#include <TCollection_HAsciiString.hxx>
 #include <TDF_Label.hxx>
 #include <TDataStd_Name.hxx>
 #include <TDocStd_Application.hxx>
@@ -745,6 +752,42 @@ uint32_t OcctKernel::xcafImportSTEP(const std::string& stepData) {
     }
 }
 
+std::string OcctKernel::xcafExportIGES(uint32_t docId, const std::string& unit) {
+    try {
+        auto it = xcafDocs_.find(docId);
+        if (it == xcafDocs_.end())
+            throw std::runtime_error("xcafExportIGES: invalid document ID");
+        if (unit != "MM" && unit != "IN")
+            throw std::runtime_error("xcafExportIGES: the unit must be MM or IN");
+        
+        // The writer takes its unit and its mode from the static parameters. Mode 0 writes trimmed
+        // surfaces, which most CAM programs read.
+        IGESControl_Controller::Init();
+        // The enum of write.iges.unit names the inch INCH
+        const char* unitName = unit == "IN" ? "INCH" : "MM";
+        if (!Interface_Static::SetCVal("write.iges.unit", unitName) ||
+            !Interface_Static::SetIVal("write.iges.brep.mode", 0))
+            throw std::runtime_error("xcafExportIGES: cannot set the unit and the mode");
+        IGESCAFControl_Writer writer;
+        IGESData_GlobalSection header = writer.Model()->GlobalSection();
+        header.SetSendName(new TCollection_HAsciiString("NekoCAD"));
+        writer.Model()->SetGlobalSection(header);
+        
+        if (!writer.Transfer(it->second.doc)) {
+            throw std::runtime_error("xcafExportIGES: transfer failed");
+        }
+        
+        // Return file path — JS reads the file via Module.FS.readFile()
+        std::string tmpPath = "/tmp/xcaf_export.igs";
+        if (!writer.Write(tmpPath.c_str())) {
+            throw std::runtime_error("xcafExportIGES: write failed");
+        }
+        return tmpPath;
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("xcafExportIGES: ") + e.what());
+    }
+}
+
 std::string OcctKernel::xcafExportGLTF(uint32_t docId, double linDeflection, double angDeflection) {
     try {
         auto it = xcafDocs_.find(docId);
@@ -771,6 +814,10 @@ std::string OcctKernel::xcafExportGLTF(uint32_t docId, double linDeflection, dou
         Handle(RWGltf_CafWriter) writer =
             new RWGltf_CafWriter(TCollection_AsciiString(tmpPath.c_str()), Standard_True);
         writer->SetTransformationFormat(RWGltf_WriterTrsfFormat_Compact);
+        // glTF is in meters with Y up. A document with no length unit is in millimeters with Z up, so the
+        // writer converts both. A document with a length unit of its own keeps it, because Perform reads it.
+        writer->ChangeCoordinateSystemConverter().SetInputLengthUnit(0.001);
+        writer->ChangeCoordinateSystemConverter().SetInputCoordinateSystem(RWMesh_CoordinateSystem_Zup);
         if (!writer->Perform(it->second.doc, fileInfo, Message_ProgressRange())) {
             throw std::runtime_error("xcafExportGLTF: write failed");
         }

@@ -84,6 +84,7 @@ export interface RawXCAFKernel {
     xcafExportSTEP(docId: number): string;
     xcafImportSTEP(stepData: string): number;
     xcafExportGLTF(docId: number, linDefl: number, angDefl: number): string;
+    xcafExportIGES(docId: number, unit: string): string;
 }
 
 /** Emscripten FS interface needed for binary glTF export. */
@@ -279,6 +280,29 @@ export class XCAFDocument {
     exportSTEP(): string {
         this.#ensureOpen();
         return wrap("xcafExportSTEP", () => this.#raw.xcafExportSTEP(this.#docId));
+    }
+
+    /**
+     * Export as IGES with colors and names preserved, as trimmed surfaces
+     * (`write.iges.brep.mode` 0), which most CAM programs read. `unit` is the
+     * unit of the file: the writer converts the millimeters of the model to it.
+     * The global section names NekoCAD as the product.
+     */
+    exportIGES(options?: { unit?: "MM" | "IN"; fs?: EmscriptenFS }): string {
+        this.#ensureOpen();
+        const fs = options?.fs ?? this.#fs;
+        if (!fs) {
+            throw new OcctError(
+                "xcafExportIGES",
+                "No Emscripten FS available. Either create the document via OcctKernel.createXCAFDocument(), or pass { fs } in options.",
+            );
+        }
+        const path = wrap("xcafExportIGES", () => this.#raw.xcafExportIGES(this.#docId, options?.unit ?? "MM"));
+        try {
+            return new TextDecoder().decode(fs.readFile(path));
+        } finally {
+            fs.unlink(path);
+        }
     }
 
     /**

@@ -277,6 +277,7 @@ export interface OcctRawKernel {
 
     // I/O
     importStep(data: string): number;
+    importIges(data: string): number;
     exportStep(id: number): string;
     importStl(data: string): number;
     importStlBinary(data: Uint8Array): number;
@@ -402,6 +403,7 @@ export interface OcctRawKernel {
     xcafExportSTEP(docId: number): string;
     xcafImportSTEP(stepData: string): number;
     xcafExportGLTF(docId: number, linDefl: number, angDefl: number): string;
+    xcafExportIGES(docId: number, unit: string): string;
 
     // Bulk array marshalling — move large arrays in one HEAP copy instead of
     // N per-element push_back() boundary crossings.

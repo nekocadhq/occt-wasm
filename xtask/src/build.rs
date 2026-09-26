@@ -245,8 +245,6 @@ fn compile_facade(root: &Path, threads: Threads) -> Result<Vec<PathBuf>> {
 
 /// OCCT static libraries not used by the facade — excluded from linking.
 const EXCLUDED_LIBS: &[&str] = &[
-    // IGES exchange (deliberately excluded — STEP is the modern standard, saves ~1-2 MB)
-    "libTKDEIGES.a",
     // Persistence / serialization
     "libTKStd.a",
     "libTKStdL.a",

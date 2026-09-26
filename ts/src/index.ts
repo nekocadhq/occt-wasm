@@ -1469,6 +1469,18 @@ export class OcctKernel {
         });
     }
 
+    /**
+     * Read IGES data into one shape. The entities that the file marks as blank,
+     * such as construction geometry, stay out. IGES often holds loose faces, so
+     * the result can be a compound of faces with no solid: sew it to get one.
+     */
+    importIges(data: string | ArrayBuffer): ShapeHandle {
+        return wrap("importIges", () => {
+            const str = typeof data === "string" ? data : new TextDecoder().decode(data);
+            return handle(this.#raw.importIges(str));
+        });
+    }
+
     exportStep(shape: ShapeHandle): string {
         return wrap("exportStep", () => this.#raw.exportStep(shape));
     }

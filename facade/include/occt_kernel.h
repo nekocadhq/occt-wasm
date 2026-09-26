@@ -327,6 +327,7 @@ class OcctKernel {
 
     // --- I/O ---
     uint32_t importStep(const std::string& data);
+    uint32_t importIges(const std::string& data);
     std::string exportStep(uint32_t id);
     uint32_t importStl(const std::string& data);
     std::string exportStl(uint32_t id, double linearDeflection, bool ascii);
@@ -466,6 +467,7 @@ class OcctKernel {
     std::string xcafExportSTEP(uint32_t docId);
     uint32_t xcafImportSTEP(const std::string& stepData);
     std::string xcafExportGLTF(uint32_t docId, double linDeflection, double angDeflection);
+    std::string xcafExportIGES(uint32_t docId, const std::string& unit);
 
     // --- Surface-based edge/face ---
     uint32_t makeFaceOnSurface(uint32_t faceId, uint32_t wireId);

@@ -135,3 +135,17 @@ describe("XCAF wrapper factory coverage", () => {
         reimported.close();
     });
 });
+
+describe("IGES wrapper coverage", () => {
+    it("XCAFDocument.exportIGES and importIges give a box back with the same volume", () => {
+        const doc = kernel.createXCAFDocument();
+        doc.addShape(kernel.makeBox(10, 10, 10), { name: "cube", color: [0.8, 0.2, 0.1] });
+        const iges: string = doc.exportIGES({ unit: "MM" });
+        doc.close();
+        expect(iges).toContain("7HNekoCAD");
+
+        const read = kernel.importIges(iges);
+        const solid = kernel.sewAndSolidify(kernel.getSubShapes(read, "face"), 1e-6);
+        expect(kernel.getVolume(solid)).toBeCloseTo(1000, 3);
+    });
+});
