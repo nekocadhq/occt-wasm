@@ -242,6 +242,10 @@ pub(crate) struct GeneratedFuncs {
     fn_checkpoint: TypedFunc<(), u32>,
     fn_release_since: TypedFunc<(u32,), i32>,
     fn_get_shape_count: TypedFunc<(), u32>,
+    fn_history_begin: TypedFunc<(), i32>,
+    fn_history_end: TypedFunc<(), u32>,
+    fn_history_images: TypedFunc<(u32, i32, i32, u32, i32, i32), i32>,
+    fn_history_release: TypedFunc<(u32,), i32>,
     fn_make_null_shape: TypedFunc<(), u32>,
     fn_xcaf_new_document: TypedFunc<(), u32>,
     fn_xcaf_close: TypedFunc<(u32,), i32>,
@@ -511,6 +515,10 @@ impl GeneratedFuncs {
             fn_checkpoint: instance.get_typed_func(&mut store, "occt_checkpoint")?,
             fn_release_since: instance.get_typed_func(&mut store, "occt_release_since")?,
             fn_get_shape_count: instance.get_typed_func(&mut store, "occt_get_shape_count")?,
+            fn_history_begin: instance.get_typed_func(&mut store, "occt_history_begin")?,
+            fn_history_end: instance.get_typed_func(&mut store, "occt_history_end")?,
+            fn_history_images: instance.get_typed_func(&mut store, "occt_history_images")?,
+            fn_history_release: instance.get_typed_func(&mut store, "occt_history_release")?,
             fn_make_null_shape: instance.get_typed_func(&mut store, "occt_make_null_shape")?,
             fn_xcaf_new_document: instance.get_typed_func(&mut store, "occt_xcaf_new_document")?,
             fn_xcaf_close: instance.get_typed_func(&mut store, "occt_xcaf_close")?,
@@ -4371,6 +4379,69 @@ impl crate::kernel::OcctKernel {
             .call(&mut self.store, ())?;
         self.check_error("get_shape_count")?;
         Ok(result)
+    }
+
+    pub fn history_begin(&mut self) -> OcctResult<()> {
+        let result = self.generated.fn_history_begin.call(&mut self.store, ())?;
+        if result < 0 {
+            return Err(self.read_last_error("history_begin"));
+        }
+        Ok(())
+    }
+
+    pub fn history_end(&mut self) -> OcctResult<u32> {
+        let result = self.generated.fn_history_end.call(&mut self.store, ())?;
+        self.check_error("history_end")?;
+        Ok(result)
+    }
+
+    pub fn history_images(
+        &mut self,
+        history_id: u32,
+        from_ids: &[ShapeHandle],
+        result_id: ShapeHandle,
+        shape_type: &str,
+    ) -> OcctResult<Vec<i32>> {
+        let from_ids_bytes: Vec<u8> = from_ids.iter().flat_map(|h| h.0.to_le_bytes()).collect();
+        let from_ids_ptr = self.write_bytes(&from_ids_bytes)?;
+        let from_ids_len = from_ids.len() as u32;
+        let shape_type_ptr = match self.write_bytes(shape_type.as_bytes()) {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                let _ = self.free_bytes(from_ids_ptr);
+                return Err(e);
+            }
+        };
+        let shape_type_len = shape_type.len() as u32;
+        let len = self.generated.fn_history_images.call(
+            &mut self.store,
+            (
+                history_id,
+                from_ids_ptr as i32,
+                from_ids_len as i32,
+                result_id.0,
+                shape_type_ptr as i32,
+                shape_type_len as i32,
+            ),
+        );
+        self.free_bytes(from_ids_ptr)?;
+        self.free_bytes(shape_type_ptr)?;
+        let len = len?;
+        if len < 0 {
+            return Err(self.read_last_error("history_images"));
+        }
+        self.read_vec_i32_result()
+    }
+
+    pub fn history_release(&mut self, history_id: u32) -> OcctResult<()> {
+        let result = self
+            .generated
+            .fn_history_release
+            .call(&mut self.store, (history_id,))?;
+        if result < 0 {
+            return Err(self.read_last_error("history_release"));
+        }
+        Ok(())
     }
 
     pub fn make_null_shape(&mut self) -> OcctResult<ShapeHandle> {

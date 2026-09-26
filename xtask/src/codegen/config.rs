@@ -288,6 +288,9 @@ fuser.Build();
 if (!fuser.IsDone() || fuser.HasErrors()) {
     throw std::runtime_error(\"fuseAll: operation failed\");
 }
+for (uint32_t sid : shapeIds) {
+    record(fuser, {get(sid)});
+}
 return store(fuser.Shape());",
         includes: &["BRepAlgoAPI_Fuse.hxx", "NCollection_List.hxx", "TopoDS_Shape.hxx"],
         category: "booleans",
@@ -364,6 +367,10 @@ cutter.Build();
 if (!cutter.IsDone() || cutter.HasErrors()) {
     throw std::runtime_error(\"cutAll: operation failed\");
 }
+record(cutter, {get(shapeId)});
+for (uint32_t tid : toolIds) {
+    record(cutter, {get(tid)});
+}
 return store(cutter.Shape());",
         includes: &["BRepAlgoAPI_Cut.hxx", "NCollection_List.hxx", "TopoDS_Shape.hxx"],
         category: "booleans",
@@ -428,6 +435,7 @@ splitter.Build();
 if (!splitter.IsDone() || splitter.HasErrors()) {
     throw std::runtime_error(\"split: operation failed\");
 }
+record(splitter, {get(shapeId)});
 return store(splitter.Shape());",
         includes: &["BRepAlgoAPI_Splitter.hxx", "NCollection_List.hxx", "TopoDS_Shape.hxx"],
         category: "booleans",
@@ -640,6 +648,7 @@ maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"chamferOnFaces: operation failed\");
 }
+record(maker, {solid});
 return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferOnFaces\", true));",
         includes: &["BRepFilletAPI_MakeChamfer.hxx", "TopExp_Explorer.hxx", "TopoDS.hxx"],
         category: "modeling",
@@ -672,6 +681,7 @@ maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"shell: operation failed\");
 }
+record(maker, {get(solidId)});
 return store(maker.Shape());",
         includes: &["BRepOffsetAPI_MakeThickSolid.hxx", "NCollection_List.hxx"],
         category: "modeling",
@@ -694,6 +704,7 @@ maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"offset: operation failed\");
 }
+record(maker, {get(solidId)});
 return store(maker.Shape());",
         includes: &["BRepOffsetAPI_MakeOffsetShape.hxx"],
         category: "modeling",
@@ -717,6 +728,7 @@ maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"draft: operation failed\");
 }
+record(maker, {get(shapeId)});
 return store(maker.Shape());",
         includes: &["BRepOffsetAPI_DraftAngle.hxx", "TopoDS.hxx", "gp_Dir.hxx", "gp_Pln.hxx"],
         category: "modeling",
@@ -782,6 +794,7 @@ maker.Build();
 if (!maker.IsDone() || maker.HasErrors()) {
     throw std::runtime_error(\"defeature: operation failed\");
 }
+record(maker, {get(shapeId)});
 return store(maker.Shape());",
         includes: &["BRepAlgoAPI_Defeaturing.hxx", "NCollection_List.hxx"],
         category: "modeling",
@@ -926,6 +939,7 @@ maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"filletLaw: operation failed\");
 }
+record(maker, {get(solidId)});
 return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletLaw\", true));",
         includes: &[
             "BRepFilletAPI_MakeFillet.hxx", "BRepAdaptor_Curve.hxx", "BRep_Tool.hxx",
@@ -1172,6 +1186,7 @@ gp_Trsf trsf;
 trsf.SetValues(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5], matrix[6],
                matrix[7], matrix[8], matrix[9], matrix[10], matrix[11]);
 BRepBuilderAPI_Transform maker(get(id), trsf, false);
+record(maker, {get(id)});
 return store(maker.Shape());",
         includes: &["gp_Trsf.hxx", "BRepBuilderAPI_Transform.hxx"],
         category: "transforms",
@@ -1214,6 +1229,7 @@ BRepBuilderAPI_GTransform maker(get(id), gt, true);
 if (!maker.IsDone()) {
     throw std::runtime_error(\"generalTransform: transform failed\");
 }
+record(maker, {get(id)});
 return store(maker.Shape());",
         includes: &["gp_GTrsf.hxx", "BRepBuilderAPI_GTransform.hxx"],
         category: "transforms",
@@ -4243,6 +4259,7 @@ return store(drafter.Shape());",
         setup_code: "\
 ShapeFix_Shape fixer(get(id));
 fixer.Perform();
+record(fixer.Context()->History());
 return store(fixer.Shape());",
         includes: &["ShapeFix_Shape.hxx"],
         category: "healing",
@@ -4257,6 +4274,7 @@ return store(fixer.Shape());",
         setup_code: "\
 ShapeUpgrade_UnifySameDomain upgrader(get(id), true, true, false);
 upgrader.Build();
+record(upgrader.History());
 return store(upgrader.Shape());",
         includes: &["ShapeUpgrade_UnifySameDomain.hxx"],
         category: "healing",
@@ -5511,7 +5529,9 @@ return result;",
         ctor_args: "",
         setup_code: "\
 arena_.clear();
-nextId_ = 1;",
+nextId_ = 1;
+journals_.clear();
+histories_.clear();",
         includes: &[],
         category: "kernel",
         return_type: ReturnType::Void,
@@ -5561,6 +5581,72 @@ for (auto it = arena_.begin(); it != arena_.end();) {
         includes: &[],
         category: "kernel",
         return_type: ReturnType::Uint32,
+    },
+    // ── The history of a step (NekoCAD) ─────────────────────────────
+    // Each maker that changes faces records its history between historyBegin and historyEnd.
+    // historyImages then follows faces or edges from the inputs of the step to its result.
+    MethodSpec {
+        name: "historyBegin",
+        kind: MethodKind::CustomBody,
+        params: &[],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "journals_.emplace_back();",
+        includes: &[],
+        category: "kernel",
+        return_type: ReturnType::Void,
+    },
+    MethodSpec {
+        name: "historyEnd",
+        kind: MethodKind::CustomBody,
+        params: &[],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "\
+if (journals_.empty()) {
+    throw std::runtime_error(\"historyEnd: no history records\");
+}
+uint32_t id = nextHistoryId_++;
+histories_.emplace(id, std::move(journals_.back()));
+journals_.pop_back();
+return id;",
+        includes: &[],
+        category: "kernel",
+        return_type: ReturnType::Uint32,
+    },
+    MethodSpec {
+        name: "historyImages",
+        kind: MethodKind::CustomBody,
+        params: &[
+            FacadeParam::Uint32("historyId"), FacadeParam::VectorShapeIds("fromIds"),
+            FacadeParam::ShapeId("resultId"), FacadeParam::String("shapeType"),
+        ],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "\
+auto it = histories_.find(historyId);
+if (it == histories_.end()) {
+    throw std::runtime_error(\"historyImages: invalid history ID: \" + std::to_string(historyId));
+}
+TopAbs_ShapeEnum type;
+if (shapeType == \"face\") type = TopAbs_FACE;
+else if (shapeType == \"edge\") type = TopAbs_EDGE;
+else throw std::runtime_error(\"historyImages: the type is face or edge, not \" + shapeType);
+return imagesOf(it->second, fromIds, get(resultId), type);",
+        includes: &["TopAbs_ShapeEnum.hxx"],
+        category: "kernel",
+        return_type: ReturnType::VectorInt,
+    },
+    MethodSpec {
+        name: "historyRelease",
+        kind: MethodKind::CustomBody,
+        params: &[FacadeParam::Uint32("historyId")],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "histories_.erase(historyId);",
+        includes: &[],
+        category: "kernel",
+        return_type: ReturnType::Void,
     },
     MethodSpec {
         name: "makeNullShape",

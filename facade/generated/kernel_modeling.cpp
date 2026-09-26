@@ -331,6 +331,7 @@ uint32_t OcctKernel::fillet(uint32_t solidId, std::vector<uint32_t> edgeIds, dou
         if (!maker.IsDone()) {
             throw std::runtime_error("fillet: operation failed");
         }
+        record(maker, {get(solidId)});
         return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "fillet", true));
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("fillet: ") + e.what());
@@ -347,6 +348,7 @@ uint32_t OcctKernel::chamfer(uint32_t solidId, std::vector<uint32_t> edgeIds, do
         if (!maker.IsDone()) {
             throw std::runtime_error("chamfer: operation failed");
         }
+        record(maker, {get(solidId)});
         return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamfer", true));
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("chamfer: ") + e.what());
@@ -448,6 +450,7 @@ uint32_t OcctKernel::chamferOnFaces(uint32_t solidId, std::vector<uint32_t> edge
         if (!maker.IsDone()) {
             throw std::runtime_error("chamferOnFaces: operation failed");
         }
+        record(maker, {solid});
         return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferOnFaces", true));
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("chamferOnFaces: ") + e.what());
@@ -466,6 +469,7 @@ uint32_t OcctKernel::shell(uint32_t solidId, std::vector<uint32_t> faceIds, doub
         if (!maker.IsDone()) {
             throw std::runtime_error("shell: operation failed");
         }
+        record(maker, {get(solidId)});
         return store(maker.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("shell: ") + e.what());
@@ -480,6 +484,7 @@ uint32_t OcctKernel::offset(uint32_t solidId, double distance, double tolerance)
         if (!maker.IsDone()) {
             throw std::runtime_error("offset: operation failed");
         }
+        record(maker, {get(solidId)});
         return store(maker.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("offset: ") + e.what());
@@ -495,6 +500,7 @@ uint32_t OcctKernel::draft(uint32_t shapeId, uint32_t faceId, double angleRad, d
         if (!maker.IsDone()) {
             throw std::runtime_error("draft: operation failed");
         }
+        record(maker, {get(shapeId)});
         return store(maker.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("draft: ") + e.what());
@@ -542,6 +548,7 @@ uint32_t OcctKernel::defeature(uint32_t shapeId, std::vector<uint32_t> faceIds, 
         if (!maker.IsDone() || maker.HasErrors()) {
             throw std::runtime_error("defeature: operation failed");
         }
+        record(maker, {get(shapeId)});
         return store(maker.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("defeature: ") + e.what());
@@ -654,6 +661,7 @@ uint32_t OcctKernel::filletLaw(uint32_t solidId, std::vector<uint32_t> edgeIds, 
         if (!maker.IsDone()) {
             throw std::runtime_error("filletLaw: operation failed");
         }
+        record(maker, {get(solidId)});
         return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletLaw", true));
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("filletLaw: ") + e.what());

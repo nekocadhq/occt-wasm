@@ -297,6 +297,7 @@ uint32_t OcctKernel::fixShape(uint32_t id) {
     try {
         ShapeFix_Shape fixer(get(id));
         fixer.Perform();
+        record(fixer.Context()->History());
         return store(fixer.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("fixShape: ") + e.what());
@@ -307,6 +308,7 @@ uint32_t OcctKernel::unifySameDomain(uint32_t id) {
     try {
         ShapeUpgrade_UnifySameDomain upgrader(get(id), true, true, false);
         upgrader.Build();
+        record(upgrader.History());
         return store(upgrader.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("unifySameDomain: ") + e.what());

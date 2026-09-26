@@ -88,6 +88,7 @@ fn emit_boolean_op(buf: &mut String, spec: &MethodSpec) {
         "            throw std::runtime_error(\"{name}: boolean operation failed\");"
     );
     let _ = writeln!(buf, "        }}");
+    let _ = writeln!(buf, "        record(op, {{{args}}});");
     let _ = writeln!(buf, "        return store(op.Shape());");
     let _ = writeln!(buf, "    }} catch (const Standard_Failure& e) {{");
     let _ = writeln!(
@@ -149,6 +150,12 @@ fn emit_fillet_like(buf: &mut String, spec: &MethodSpec) {
         "            throw std::runtime_error(\"{name}: operation failed\");"
     );
     let _ = writeln!(buf, "        }}");
+    if let Some(solid) = spec.params.iter().find_map(|p| match p {
+        FacadeParam::ShapeId(n) => Some(*n),
+        _ => None,
+    }) {
+        let _ = writeln!(buf, "        record(maker, {{get({solid})}});");
+    }
     let _ = writeln!(
         buf,
         "        return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"{name}\", true));"
@@ -186,6 +193,9 @@ fn emit_setup_shape(buf: &mut String, spec: &MethodSpec) {
     }
 
     let _ = writeln!(buf, "        {cls} maker({args});");
+    // A transform and a copy make each face of their input again, and the history tells which.
+    let input = args.split(',').next().unwrap_or_default().trim();
+    let _ = writeln!(buf, "        record(maker, {{{input}}});");
     let _ = writeln!(buf, "        return store(maker.Shape());");
     let _ = writeln!(buf, "    }} catch (const Standard_Failure& e) {{");
     let _ = writeln!(

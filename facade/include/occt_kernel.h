@@ -7,9 +7,16 @@
 #include <unordered_map>
 #include <vector>
 
+#include <initializer_list>
+
+#include <BRepTools_History.hxx>
+#include <NCollection_IndexedMap.hxx>
+#include <Standard_Failure.hxx>
 #include <TDF_Label.hxx>
 #include <TDocStd_Application.hxx>
 #include <TDocStd_Document.hxx>
+#include <TopExp.hxx>
+#include <TopTools_ShapeMapHasher.hxx>
 #include <TopoDS_Shape.hxx>
 
 // XCAF helpers (defined in kernel.cpp, used by generated xcaf methods)
@@ -32,6 +39,38 @@ void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angu
 
 /// Holds the triangulations of the faces and the polygons of the edges of a shape, and
 /// puts them back on destruction. A forced mesh then leaves the shape as it was.
+/// The history of one maker for the faces and the edges of its inputs: what it removed, and
+/// what it modified or generated from each of them. A maker that throws for one shape tells
+/// nothing of that shape. Vertices stay out, because no caller asks for them.
+template <class Algo>
+Handle(BRepTools_History) historyOf(Algo& algo, std::initializer_list<TopoDS_Shape> inputs) {
+    Handle(BRepTools_History) history = new BRepTools_History();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> shapes;
+    for (const TopoDS_Shape& input : inputs) {
+        if (input.IsNull())
+            continue;
+        TopExp::MapShapes(input, TopAbs_FACE, shapes);
+        TopExp::MapShapes(input, TopAbs_EDGE, shapes);
+    }
+    for (int i = 1; i <= shapes.Extent(); ++i) {
+        const TopoDS_Shape& shape = shapes(i);
+        try {
+            // A fillet removes the edge that it rounds, and it generates its face from that edge.
+            if (algo.IsDeleted(shape))
+                history->Remove(shape);
+            for (const TopoDS_Shape& image : algo.Modified(shape)) {
+                if (!image.IsSame(shape))
+                    history->AddModified(shape, image);
+            }
+            for (const TopoDS_Shape& image : algo.Generated(shape)) {
+                history->AddGenerated(shape, image);
+            }
+        } catch (const Standard_Failure&) {
+        }
+    }
+    return history;
+}
+
 class MeshSnapshot {
   public:
     explicit MeshSnapshot(const TopoDS_Shape& shape);
@@ -159,6 +198,13 @@ class OcctKernel {
     void release(uint32_t id);
     void releaseAll();
     uint32_t getShapeCount();
+
+    // --- The history of a step (NekoCAD) ---
+    void historyBegin();
+    uint32_t historyEnd();
+    std::vector<int> historyImages(uint32_t historyId, std::vector<uint32_t> fromIds,
+                                   uint32_t resultId, const std::string& shapeType);
+    void historyRelease(uint32_t historyId);
     uint32_t checkpoint();
     void releaseSince(uint32_t mark);
 
@@ -259,7 +305,8 @@ class OcctKernel {
     uint32_t makeWire(std::vector<uint32_t> edgeIds);
     uint32_t makeFace(uint32_t wireId);
     uint32_t makeNonPlanarFace(uint32_t wireId);
-    uint32_t fillFace(std::vector<uint32_t> edgeIds, std::vector<uint32_t> supportIds, bool tangent);
+    uint32_t fillFace(std::vector<uint32_t> edgeIds, std::vector<uint32_t> supportIds,
+                      bool tangent);
     uint32_t addHolesInFace(uint32_t faceId, std::vector<uint32_t> holeWireIds);
     uint32_t removeHolesFromFace(uint32_t faceId, std::vector<int> holeIndices);
     uint32_t solidFromShell(uint32_t shellId);
@@ -512,6 +559,26 @@ class OcctKernel {
 
     std::unordered_map<uint32_t, TopoDS_Shape> arena_;
     uint32_t nextId_ = 1;
+
+    // The histories that record now, the innermost last: each holds the history of each
+    // maker since its historyBegin, in order. A step inside a step records on its own.
+    std::vector<std::vector<Handle(BRepTools_History)>> journals_;
+    std::unordered_map<uint32_t, std::vector<Handle(BRepTools_History)>> histories_;
+    uint32_t nextHistoryId_ = 1;
+
+    /// Adds the history of a maker to the innermost history that records, when one does.
+    template <class Algo> void record(Algo& algo, std::initializer_list<TopoDS_Shape> inputs) {
+        if (!journals_.empty())
+            journals_.back().push_back(historyOf(algo, inputs));
+    }
+    /// Adds a history that an algorithm gives whole, such as ShapeUpgrade_UnifySameDomain.
+    void record(const Handle(BRepTools_History) & history) {
+        if (!journals_.empty() && !history.IsNull())
+            journals_.back().push_back(history);
+    }
+    std::vector<int> imagesOf(const std::vector<Handle(BRepTools_History)>& steps,
+                              const std::vector<uint32_t>& fromIds, const TopoDS_Shape& result,
+                              TopAbs_ShapeEnum type) const;
 
     // XCAF document storage
     struct XCAFDocRecord {

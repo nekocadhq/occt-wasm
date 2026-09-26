@@ -478,6 +478,18 @@ export interface EvolutionData {
     deleted: number[];
 }
 
+/**
+ * What one shape became through a history (`OcctKernel.historyImages`): the
+ * indices of its images among the sub-shapes of the result, in the order of
+ * `getSubShapes`.
+ */
+export interface ShapeImages {
+    /** The shape itself, a piece of it, or the shape that a maker made again from it. */
+    modified: number[];
+    /** The shapes that a maker made from it, such as the face of a fillet from its edge. */
+    generated: number[];
+}
+
 /** HLR (hidden line removal) projection result, split by visibility and edge category. */
 export interface ProjectionData {
     /** Visible silhouette/outline edges. */

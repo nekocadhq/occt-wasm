@@ -337,6 +337,10 @@ EMSCRIPTEN_BINDINGS(occt_wasm) {
         .function("checkpoint", &OcctKernel::checkpoint)
         .function("releaseSince", &OcctKernel::releaseSince)
         .function("getShapeCount", &OcctKernel::getShapeCount)
+        .function("historyBegin", &OcctKernel::historyBegin)
+        .function("historyEnd", &OcctKernel::historyEnd)
+        .function("historyImages", &OcctKernel::historyImages)
+        .function("historyRelease", &OcctKernel::historyRelease)
         .function("makeNullShape", &OcctKernel::makeNullShape)
 
         // xcaf

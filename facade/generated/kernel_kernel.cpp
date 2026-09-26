@@ -305,6 +305,8 @@ void OcctKernel::releaseAll() {
     try {
         arena_.clear();
         nextId_ = 1;
+        journals_.clear();
+        histories_.clear();
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("releaseAll: ") + e.what());
     }
@@ -337,6 +339,52 @@ uint32_t OcctKernel::getShapeCount() {
         return static_cast<uint32_t>(arena_.size());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("getShapeCount: ") + e.what());
+    }
+}
+
+void OcctKernel::historyBegin() {
+    try {
+        journals_.emplace_back();
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("historyBegin: ") + e.what());
+    }
+}
+
+uint32_t OcctKernel::historyEnd() {
+    try {
+        if (journals_.empty()) {
+            throw std::runtime_error("historyEnd: no history records");
+        }
+        uint32_t id = nextHistoryId_++;
+        histories_.emplace(id, std::move(journals_.back()));
+        journals_.pop_back();
+        return id;
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("historyEnd: ") + e.what());
+    }
+}
+
+std::vector<int> OcctKernel::historyImages(uint32_t historyId, std::vector<uint32_t> fromIds, uint32_t resultId, const std::string& shapeType) {
+    try {
+        auto it = histories_.find(historyId);
+        if (it == histories_.end()) {
+            throw std::runtime_error("historyImages: invalid history ID: " + std::to_string(historyId));
+        }
+        TopAbs_ShapeEnum type;
+        if (shapeType == "face") type = TopAbs_FACE;
+        else if (shapeType == "edge") type = TopAbs_EDGE;
+        else throw std::runtime_error("historyImages: the type is face or edge, not " + shapeType);
+        return imagesOf(it->second, fromIds, get(resultId), type);
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("historyImages: ") + e.what());
+    }
+}
+
+void OcctKernel::historyRelease(uint32_t historyId) {
+    try {
+        histories_.erase(historyId);
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("historyRelease: ") + e.what());
     }
 }
 

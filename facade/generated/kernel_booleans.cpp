@@ -300,6 +300,7 @@ uint32_t OcctKernel::fuse(uint32_t a, uint32_t b) {
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("fuse: boolean operation failed");
         }
+        record(op, {get(a), get(b)});
         return store(op.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("fuse: ") + e.what());
@@ -313,6 +314,7 @@ uint32_t OcctKernel::cut(uint32_t a, uint32_t b) {
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("cut: boolean operation failed");
         }
+        record(op, {get(a), get(b)});
         return store(op.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("cut: ") + e.what());
@@ -326,6 +328,7 @@ uint32_t OcctKernel::common(uint32_t a, uint32_t b) {
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("common: boolean operation failed");
         }
+        record(op, {get(a), get(b)});
         return store(op.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("common: ") + e.what());
@@ -339,6 +342,7 @@ uint32_t OcctKernel::section(uint32_t a, uint32_t b) {
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("section: boolean operation failed");
         }
+        record(op, {get(a), get(b)});
         return store(op.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("section: ") + e.what());
@@ -375,6 +379,9 @@ uint32_t OcctKernel::fuseAll(std::vector<uint32_t> shapeIds) {
         fuser.Build();
         if (!fuser.IsDone() || fuser.HasErrors()) {
             throw std::runtime_error("fuseAll: operation failed");
+        }
+        for (uint32_t sid : shapeIds) {
+            record(fuser, {get(sid)});
         }
         return store(fuser.Shape());
     } catch (const Standard_Failure& e) {
@@ -437,6 +444,10 @@ uint32_t OcctKernel::cutAll(uint32_t shapeId, std::vector<uint32_t> toolIds) {
         if (!cutter.IsDone() || cutter.HasErrors()) {
             throw std::runtime_error("cutAll: operation failed");
         }
+        record(cutter, {get(shapeId)});
+        for (uint32_t tid : toolIds) {
+            record(cutter, {get(tid)});
+        }
         return store(cutter.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("cutAll: ") + e.what());
@@ -486,6 +497,7 @@ uint32_t OcctKernel::split(uint32_t shapeId, std::vector<uint32_t> toolIds) {
         if (!splitter.IsDone() || splitter.HasErrors()) {
             throw std::runtime_error("split: operation failed");
         }
+        record(splitter, {get(shapeId)});
         return store(splitter.Shape());
     } catch (const Standard_Failure& e) {
         throw std::runtime_error(std::string("split: ") + e.what());

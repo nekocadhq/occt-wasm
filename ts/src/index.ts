@@ -32,6 +32,7 @@ export {
     type CurvatureData,
     type EdgeData,
     type EvolutionData,
+    type ShapeImages,
     type GLTFExportOptions,
     type InitOptions,
     type LabelInfo,
@@ -84,6 +85,7 @@ import type {
     CurvatureData,
     EdgeData,
     EvolutionData,
+    ShapeImages,
     InitOptions,
     Mesh,
     MeshBatchData,
@@ -2332,6 +2334,63 @@ export class OcctKernel {
 
     get shapeCount(): number {
         return this.#raw.getShapeCount();
+    }
+
+    // =======================================================================
+    // The history of a step
+    // =======================================================================
+
+    /**
+     * Start to record the history of each maker that changes faces: the
+     * booleans, `unifySameDomain`, `fixShape`, the fillets and the chamfers,
+     * `shell`, `offset`, `draft`, `defeature`, `split`, and the transforms. A
+     * second call before {@link historyEnd} starts a history inside the first,
+     * which records on its own until it ends.
+     */
+    historyBegin(): void {
+        wrap("historyBegin", () => this.#raw.historyBegin());
+    }
+
+    /**
+     * Stop the innermost history that records, and give its id for
+     * {@link historyImages}. Release it with {@link historyRelease}.
+     * @throws OcctError when no history records
+     */
+    historyEnd(): number {
+        return wrap("historyEnd", () => this.#raw.historyEnd());
+    }
+
+    /**
+     * What each shape of `from` became in `result`, through the makers of a
+     * history in their order: the indices of the sub-shapes of `type` in
+     * `result`, in the order of {@link getSubShapes}. A face that a boolean
+     * splits has more than one modified image. A face that a fillet makes from
+     * an edge is a generated image of that edge. A shape that is in `result`
+     * with no change is its own modified image, and a shape with no image is
+     * gone. A maker that records no history, such as a sweep, gives no image of
+     * the shapes that it made again.
+     * @throws OcctError */
+    historyImages(history: number, from: ShapeHandle[], result: ShapeHandle, type: "face" | "edge"): ShapeImages[] {
+        return wrap("historyImages", () => {
+            const flat = this.#withU32(from, (ids) =>
+                this.#drainVector(this.#raw.historyImages(history, ids, result, type), Int32Array),
+            );
+            const images: ShapeImages[] = [];
+            let at = 0;
+            const take = () => {
+                const count = flat[at++] ?? 0;
+                const list = flat.slice(at, at + count);
+                at += count;
+                return list;
+            };
+            for (let i = 0; i < from.length; i++) images.push({ modified: take(), generated: take() });
+            return images;
+        });
+    }
+
+    /** Free a history that {@link historyEnd} gave. */
+    historyRelease(history: number): void {
+        this.#raw.historyRelease(history);
     }
 
     // =======================================================================

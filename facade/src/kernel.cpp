@@ -35,6 +35,7 @@
 #ifdef OCCT_WASM_MIMALLOC
 #include <malloc.h>
 #endif
+#include <algorithm>
 #include <optional>
 #include <stdexcept>
 #include <unordered_set>
@@ -244,6 +245,62 @@ OcctKernel::OcctKernel() {
 
 OcctKernel::~OcctKernel() {
     releaseAll();
+}
+
+// --- The history of a step ---
+
+// Follows each shape of `fromIds` through the makers of a step, in order, to the shapes of
+// `type` in `result`. A maker that does not name a shape leaves it as it is. A shape that a
+// maker generates from a shape stays generated through each maker after it. For each input
+// the answer is the count of the modified images and their indices, then the same for the
+// generated images. An index is the place of the image in TopExp::MapShapes of `result`, the
+// order of getSubShapes, and an input that is in `result` unchanged is its own image.
+std::vector<int> OcctKernel::imagesOf(const std::vector<Handle(BRepTools_History)>& steps,
+                                      const std::vector<uint32_t>& fromIds,
+                                      const TopoDS_Shape& result, TopAbs_ShapeEnum type) const {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> targets;
+    TopExp::MapShapes(result, type, targets);
+    std::vector<int> out;
+    for (uint32_t fromId : fromIds) {
+        // Each shape that the input is now, and whether a maker generated it.
+        std::vector<std::pair<TopoDS_Shape, bool>> now{{get(fromId), false}};
+        for (const Handle(BRepTools_History) & step : steps) {
+            std::vector<std::pair<TopoDS_Shape, bool>> next;
+            NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
+            auto add = [&](const TopoDS_Shape& shape, bool generated) {
+                if (seen.Add(shape) > static_cast<int>(next.size()))
+                    next.emplace_back(shape, generated);
+            };
+            for (const auto& [shape, generated] : now) {
+                const NCollection_List<TopoDS_Shape>& modified = step->Modified(shape);
+                if (!step->IsRemoved(shape)) {
+                    if (modified.IsEmpty())
+                        add(shape, generated);
+                    for (const TopoDS_Shape& image : modified)
+                        add(image, generated);
+                }
+                for (const TopoDS_Shape& image : step->Generated(shape))
+                    add(image, true);
+            }
+            now = std::move(next);
+        }
+        std::vector<int> modified;
+        std::vector<int> generated;
+        for (const auto& [shape, isGenerated] : now) {
+            if (shape.ShapeType() != type)
+                continue;
+            const int index = targets.FindIndex(shape);
+            if (index > 0)
+                (isGenerated ? generated : modified).push_back(index - 1);
+        }
+        for (std::vector<int>* images : {&modified, &generated}) {
+            std::sort(images->begin(), images->end());
+            images->erase(std::unique(images->begin(), images->end()), images->end());
+            out.push_back(static_cast<int>(images->size()));
+            out.insert(out.end(), images->begin(), images->end());
+        }
+    }
+    return out;
 }
 
 uint32_t OcctKernel::store(const TopoDS_Shape& shape) {

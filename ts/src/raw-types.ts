@@ -149,6 +149,12 @@ export interface OcctRawKernel {
     checkpoint(): number;
     releaseSince(mark: number): void;
 
+    // The history of a step
+    historyBegin(): void;
+    historyEnd(): number;
+    historyImages(historyId: number, fromIds: EmbindVectorU32, resultId: number, shapeType: string): EmbindVectorI32;
+    historyRelease(historyId: number): void;
+
     // Primitives
     makeBox(dx: number, dy: number, dz: number): number;
     makeBoxFromCorners(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number): number;
