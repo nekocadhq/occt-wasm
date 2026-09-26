@@ -388,6 +388,9 @@ class OcctKernel {
     uint32_t simplify(uint32_t id);
     uint32_t filletVariable(uint32_t solidId, uint32_t edgeId, double startRadius,
                             double endRadius);
+    uint32_t filletLaw(uint32_t solidId, std::vector<uint32_t> edgeIds, std::vector<double> starts,
+                       std::vector<int> counts, std::vector<double> positions,
+                       std::vector<double> radii);
     uint32_t offsetWire2D(uint32_t wireId, double offset, int joinType);
 
     // --- Evolution (operations with shape history) ---

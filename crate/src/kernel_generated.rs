@@ -59,6 +59,7 @@ pub(crate) struct GeneratedFuncs {
     fn_reverse_shape: TypedFunc<(u32,), u32>,
     fn_simplify: TypedFunc<(u32,), u32>,
     fn_fillet_variable: TypedFunc<(u32, u32, f64, f64), u32>,
+    fn_fillet_law: TypedFunc<(u32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32), u32>,
     fn_fillet_batch: TypedFunc<(i32, i32, i32, i32, i32, i32, i32, i32), i32>,
     fn_offset_wire2_d: TypedFunc<(u32, f64, i32), u32>,
     fn_translate: TypedFunc<(u32, f64, f64, f64), u32>,
@@ -303,6 +304,7 @@ impl GeneratedFuncs {
             fn_reverse_shape: instance.get_typed_func(&mut store, "occt_reverse_shape")?,
             fn_simplify: instance.get_typed_func(&mut store, "occt_simplify")?,
             fn_fillet_variable: instance.get_typed_func(&mut store, "occt_fillet_variable")?,
+            fn_fillet_law: instance.get_typed_func(&mut store, "occt_fillet_law")?,
             fn_fillet_batch: instance.get_typed_func(&mut store, "occt_fillet_batch")?,
             fn_offset_wire2_d: instance.get_typed_func(&mut store, "occt_offset_wire2_d")?,
             fn_translate: instance.get_typed_func(&mut store, "occt_translate")?,
@@ -1157,6 +1159,89 @@ impl crate::kernel::OcctKernel {
         self.check_error("fillet_variable")?;
         if result == 0 {
             return Err(self.read_last_error("fillet_variable"));
+        }
+        Ok(ShapeHandle(result))
+    }
+
+    pub fn fillet_law(
+        &mut self,
+        solid_id: ShapeHandle,
+        edge_ids: &[ShapeHandle],
+        starts: &[f64],
+        counts: &[i32],
+        positions: &[f64],
+        radii: &[f64],
+    ) -> OcctResult<ShapeHandle> {
+        let edge_ids_bytes: Vec<u8> = edge_ids.iter().flat_map(|h| h.0.to_le_bytes()).collect();
+        let edge_ids_ptr = self.write_bytes(&edge_ids_bytes)?;
+        let edge_ids_len = edge_ids.len() as u32;
+        let starts_bytes: Vec<u8> = starts.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let starts_ptr = match self.write_bytes(&starts_bytes) {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                let _ = self.free_bytes(edge_ids_ptr);
+                return Err(e);
+            }
+        };
+        let starts_len = starts.len() as u32;
+        let counts_bytes: Vec<u8> = counts.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let counts_ptr = match self.write_bytes(&counts_bytes) {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                let _ = self.free_bytes(edge_ids_ptr);
+                let _ = self.free_bytes(starts_ptr);
+                return Err(e);
+            }
+        };
+        let counts_len = counts.len() as u32;
+        let positions_bytes: Vec<u8> = positions.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let positions_ptr = match self.write_bytes(&positions_bytes) {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                let _ = self.free_bytes(edge_ids_ptr);
+                let _ = self.free_bytes(starts_ptr);
+                let _ = self.free_bytes(counts_ptr);
+                return Err(e);
+            }
+        };
+        let positions_len = positions.len() as u32;
+        let radii_bytes: Vec<u8> = radii.iter().flat_map(|v| v.to_le_bytes()).collect();
+        let radii_ptr = match self.write_bytes(&radii_bytes) {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                let _ = self.free_bytes(edge_ids_ptr);
+                let _ = self.free_bytes(starts_ptr);
+                let _ = self.free_bytes(counts_ptr);
+                let _ = self.free_bytes(positions_ptr);
+                return Err(e);
+            }
+        };
+        let radii_len = radii.len() as u32;
+        let result = self.generated.fn_fillet_law.call(
+            &mut self.store,
+            (
+                solid_id.0,
+                edge_ids_ptr as i32,
+                edge_ids_len as i32,
+                starts_ptr as i32,
+                starts_len as i32,
+                counts_ptr as i32,
+                counts_len as i32,
+                positions_ptr as i32,
+                positions_len as i32,
+                radii_ptr as i32,
+                radii_len as i32,
+            ),
+        );
+        self.free_bytes(edge_ids_ptr)?;
+        self.free_bytes(starts_ptr)?;
+        self.free_bytes(counts_ptr)?;
+        self.free_bytes(positions_ptr)?;
+        self.free_bytes(radii_ptr)?;
+        let result = result?;
+        self.check_error("fillet_law")?;
+        if result == 0 {
+            return Err(self.read_last_error("fillet_law"));
         }
         Ok(ShapeHandle(result))
     }

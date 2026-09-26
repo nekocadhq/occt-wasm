@@ -830,6 +830,110 @@ return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletV
         category: "modeling",
         return_type: ReturnType::ShapeId,
     },
+    // One fillet maker with a radius law along the contour of each edge. Edge i
+    // has counts[i] pairs in positions and radii: a relative position from 0 at
+    // the start of its contour to 1 at the end, and the radius there.
+    // OpenCascade puts a smooth curve through the pairs (Law_Interpol), flat at
+    // each end. starts[3i..3i+3] is a point near the start: the
+    // contour runs from the vertex nearest to it. An edge whose contour has a
+    // law already is skipped.
+    //
+    // SetRadius(UandR, IC, IinC) reads a position as relative to edge IinC of
+    // the contour, not to the whole contour (ChFiDS_FilSpine::SetRadius). Thus
+    // the law is cut at the ends of each edge, and each edge gets its own part.
+    MethodSpec {
+        name: "filletLaw",
+        kind: MethodKind::CustomBody,
+        params: &[
+            FacadeParam::ShapeId("solidId"), FacadeParam::VectorShapeIds("edgeIds"),
+            FacadeParam::VectorDouble("starts"), FacadeParam::VectorInt("counts"),
+            FacadeParam::VectorDouble("positions"), FacadeParam::VectorDouble("radii"),
+        ],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "\
+if (starts.size() != 3 * edgeIds.size()) {
+    throw std::runtime_error(\"filletLaw: each edge needs a start point\");
+}
+if (counts.size() != edgeIds.size() || positions.size() != radii.size()) {
+    throw std::runtime_error(\"filletLaw: the counts do not match the edges and the pairs\");
+}
+size_t total = 0;
+for (int n : counts) total += n > 0 ? static_cast<size_t>(n) : 0;
+if (total != positions.size()) {
+    throw std::runtime_error(\"filletLaw: the counts do not match the edges and the pairs\");
+}
+BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidId)));
+size_t offset = 0;
+for (size_t i = 0; i < edgeIds.size(); i++) {
+    const size_t n = static_cast<size_t>(counts[i]);
+    std::vector<gp_Pnt2d> law;
+    for (size_t k = 0; k < n; k++) law.emplace_back(positions[offset + k], radii[offset + k]);
+    offset += n;
+    if (n < 2 || std::abs(law.front().X()) > 1e-9 || std::abs(law.back().X() - 1.0) > 1e-9) {
+        throw std::runtime_error(\"filletLaw: a law goes from 0 to 1\");
+    }
+    for (size_t k = 1; k < n; k++) {
+        if (law[k].X() < law[k - 1].X()) throw std::runtime_error(\"filletLaw: the positions of a law go up\");
+    }
+    const TopoDS_Edge& edge = TopoDS::Edge(get(edgeIds[i]));
+    if (maker.Contour(edge) != 0) continue;
+    maker.Add(law.front().Y(), edge);
+    const int ic = maker.Contour(edge);
+    if (ic == 0) throw std::runtime_error(\"filletLaw: an edge can not be rounded\");
+    if (maker.ClosedAndTangent(ic) && std::abs(law.front().Y() - law.back().Y()) > 1e-9) {
+        throw std::runtime_error(\"filletLaw: a closed contour needs the same radius at its start and its end\");
+    }
+    const gp_Pnt start(starts[3 * i], starts[3 * i + 1], starts[3 * i + 2]);
+    const gp_Pnt first = BRep_Tool::Pnt(maker.FirstVertex(ic));
+    const gp_Pnt last = BRep_Tool::Pnt(maker.LastVertex(ic));
+    if (last.Distance(start) < first.Distance(start)) {
+        std::vector<gp_Pnt2d> back(law.rbegin(), law.rend());
+        for (auto& p : back) p.SetX(1.0 - p.X());
+        law = back;
+    }
+    // The radius at a relative position of the whole contour.
+    auto radiusAt = [&law](double u) {
+        for (size_t k = 1; k < law.size(); k++) {
+            if (u <= law[k].X()) {
+                const double span = law[k].X() - law[k - 1].X();
+                if (span <= 0) return law[k].Y();
+                return law[k - 1].Y() + (law[k].Y() - law[k - 1].Y()) * (u - law[k - 1].X()) / span;
+            }
+        }
+        return law.back().Y();
+    };
+    const int count = maker.NbEdges(ic);
+    std::vector<double> ends(count + 1, 0.0);
+    for (int j = 1; j <= count; j++) {
+        BRepAdaptor_Curve curve(maker.Edge(ic, j));
+        ends[j] = ends[j - 1] + GCPnts_AbscissaPoint::Length(curve);
+    }
+    for (int j = 1; j <= count; j++) {
+        const double from = ends[j - 1] / ends[count];
+        const double to = ends[j] / ends[count];
+        std::vector<gp_Pnt2d> part{gp_Pnt2d(0.0, radiusAt(from))};
+        for (const auto& p : law) {
+            if (p.X() > from + 1e-9 && p.X() < to - 1e-9) part.emplace_back((p.X() - from) / (to - from), p.Y());
+        }
+        part.emplace_back(1.0, radiusAt(to));
+        NCollection_Array1<gp_Pnt2d> uandr(1, static_cast<int>(part.size()));
+        for (size_t k = 0; k < part.size(); k++) uandr.SetValue(static_cast<int>(k) + 1, part[k]);
+        maker.SetRadius(uandr, ic, j);
+    }
+}
+maker.Build();
+if (!maker.IsDone()) {
+    throw std::runtime_error(\"filletLaw: operation failed\");
+}
+return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletLaw\", true));",
+        includes: &[
+            "BRepFilletAPI_MakeFillet.hxx", "BRepAdaptor_Curve.hxx", "BRep_Tool.hxx",
+            "GCPnts_AbscissaPoint.hxx", "NCollection_Array1.hxx", "TopoDS.hxx", "gp_Pnt2d.hxx",
+        ],
+        category: "modeling",
+        return_type: ReturnType::ShapeId,
+    },
     MethodSpec {
         name: "filletBatch",
         kind: MethodKind::CustomBody,

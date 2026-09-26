@@ -343,6 +343,7 @@ export interface OcctRawKernel {
     reverseShape(id: number): number;
     simplify(id: number): number;
     filletVariable(solidId: number, edgeId: number, startRadius: number, endRadius: number): number;
+    filletLaw(solidId: number, edgeIds: EmbindVectorU32, starts: EmbindVectorF64, counts: EmbindVectorI32, positions: EmbindVectorF64, radii: EmbindVectorF64): number;
     offsetWire2D(wireId: number, offset: number, joinType: number): number;
 
     // Evolution

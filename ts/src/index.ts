@@ -2010,6 +2010,37 @@ export class OcctKernel {
         return wrap("filletVariable", () => handle(this.#raw.filletVariable(solid, edge, startRadius, endRadius)));
     }
 
+    /** Round many edges in one maker (BRepFilletAPI_MakeFillet), each with a radius law along its contour of tangent
+     * edges. Edge `i` has `counts[i]` pairs in `positions` and `radii`, in a row: a relative position from 0 at the
+     * start of the contour to 1 at its end, and the radius there. OpenCascade puts a smooth curve through the pairs
+     * (Law_Interpol), flat at each end.
+     * `starts[3i..3i+3]` is a point near the start, and the contour runs from its vertex nearest to that point. A
+     * contour that is closed and tangent needs the same radius at 0 and 1. An edge whose contour has a law already is
+     * skipped.
+     * @throws OcctError */
+    filletLaw(
+        solid: ShapeHandle,
+        edges: ShapeHandle[],
+        starts: number[],
+        counts: number[],
+        positions: number[],
+        radii: number[],
+    ): ShapeHandle {
+        return wrap("filletLaw", () =>
+            this.#withU32(edges, (edgeVec) =>
+                this.#withF64(starts, (startVec) =>
+                    this.#withI32(counts, (countVec) =>
+                        this.#withF64(positions, (positionVec) =>
+                            this.#withF64(radii, (radiusVec) =>
+                                handle(this.#raw.filletLaw(solid, edgeVec, startVec, countVec, positionVec, radiusVec)),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        );
+    }
+
     /** Offset a 2D wire. */
     offsetWire2D(wire: ShapeHandle, offset: number, joinType: JoinType = JoinType.Arc): ShapeHandle {
         return wrap("offsetWire2D", () => handle(this.#raw.offsetWire2D(wire, offset, joinType)));

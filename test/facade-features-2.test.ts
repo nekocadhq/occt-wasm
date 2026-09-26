@@ -772,3 +772,120 @@ describe("chamferOnFaces", () => {
     expect(() => kernel.chamferOnFaces(box, [edge], [top, top], 1, 3)).toThrow(/one face/);
   });
 });
+
+describe("filletLaw", () => {
+  // The volume that a round from r1 to r2 takes off a straight edge of length l: the corner of a square less a
+  // quarter disk, with a side that grows along the edge. A variable round is not a true quarter circle, thus 3 %.
+  const loss = (l: number, r1: number, r2: number) => ((1 - Math.PI / 4) * l * (r1 * r1 + r1 * r2 + r2 * r2)) / 3;
+
+  // The edge of a 20 mm box at y = 0, z = 20, along X.
+  function topFront(box: number) {
+    return kernel.getSubShapes(box, "edge").find((e: number) => {
+      const b = kernel.getBoundingBox(e);
+      return b.xmax - b.xmin > 19 && b.ymax < 1e-6 && b.zmin > 20 - 1e-6;
+    });
+  }
+
+  // How far the round reaches into the top face (z = 20) at x = 0 and at x = 20.
+  function widths(solid: number) {
+    const top = kernel.getSubShapes(solid, "vertex").map((v: number) => kernel.vertexPosition(v))
+      .filter((p: { z: number }) => Math.abs(p.z - 20) < 1e-6);
+    const at = (x: number) =>
+      Math.min(...top.filter((p: { x: number }) => Math.abs(p.x - x) < 1e-6).map((p: { y: number }) => p.y));
+    return [at(0), at(20)];
+  }
+
+  it("grows the radius from the end nearest to the start point", () => {
+    const box = kernel.makeBox(20, 20, 20);
+    const edge = topFront(box);
+    const up = kernel.filletLaw(box, [edge], [0, 0, 20], [2], [0, 1], [1, 3]);
+    expect(kernel.isValid(up)).toBe(true);
+    expect(8000 - kernel.getVolume(up)).toBeCloseTo(loss(20, 1, 3), 0);
+    expect(Math.abs(8000 - kernel.getVolume(up) - loss(20, 1, 3)) / loss(20, 1, 3)).toBeLessThan(0.03);
+    const [w0, w20] = widths(up);
+    expect(w0).toBeCloseTo(1, 6);
+    expect(w20).toBeCloseTo(3, 6);
+
+    const down = kernel.filletLaw(box, [edge], [20, 0, 20], [2], [0, 1], [1, 3]);
+    expect(kernel.getVolume(down)).toBeCloseTo(kernel.getVolume(up), 6);
+    const [d0, d20] = widths(down);
+    expect(d0).toBeCloseTo(3, 6);
+    expect(d20).toBeCloseTo(1, 6);
+  });
+
+  it("goes through each point of the law", () => {
+    const box = kernel.makeBox(20, 20, 20);
+    const edge = topFront(box);
+    const solid = kernel.filletLaw(box, [edge], [0, 0, 20], [3], [0, 0.5, 1], [1, 3, 1]);
+    expect(kernel.isValid(solid)).toBe(true);
+    const [w0, w20] = widths(solid);
+    expect(w0).toBeCloseTo(1, 6);
+    expect(w20).toBeCloseTo(1, 6);
+    // OpenCascade draws a smooth curve through the points (Law_Interpol), not straight lines. Thus the round takes
+    // more than two straight halves from 1 to 3, and less than a constant 3.
+    const taken = 8000 - kernel.getVolume(solid);
+    expect(taken).toBeGreaterThan(2 * loss(10, 1, 3));
+    expect(taken).toBeLessThan(loss(20, 3, 3));
+    // The curve is flat at its top, thus a thin slice at x = 10 is a true quarter circle of radius 3.
+    const slab = kernel.translate(kernel.makeBox(0.1, 20, 20), 9.95, 0, 0);
+    const slice = kernel.getVolume(kernel.common(solid, slab)) / 0.1;
+    expect(400 - slice).toBeCloseTo((1 - Math.PI / 4) * 9, 2);
+  });
+
+  it("spreads the law over a contour of tangent edges, and not over its first edge only", () => {
+    // The top rim of a box of 20 x 20 x 10 with a round of 5 on the vertical edge at x = 20, y = 0: a line along X,
+    // a quarter arc, and a line along Y, all tangent. The contour runs from (0, 0, 10) to (20, 20, 10).
+    const box = kernel.makeBox(20, 20, 10);
+    const corner = kernel.getSubShapes(box, "edge").find((e: number) => {
+      const b = kernel.getBoundingBox(e);
+      return b.xmin > 20 - 1e-6 && b.ymax < 1e-6;
+    });
+    const rounded = kernel.fillet(box, [corner], 5);
+    const front = kernel.getSubShapes(rounded, "edge").find((e: number) => {
+      const b = kernel.getBoundingBox(e);
+      return b.ymax < 1e-6 && b.zmin > 10 - 1e-6 && b.xmax - b.xmin > 14;
+    });
+    const solid = kernel.filletLaw(rounded, [front], [0, 0, 10], [2], [0, 1], [1, 3]);
+    expect(kernel.isValid(solid)).toBe(true);
+    const top = kernel.getSubShapes(solid, "vertex").map((v: number) => kernel.vertexPosition(v))
+      .filter((p: { z: number }) => Math.abs(p.z - 10) < 1e-6);
+    // The start: 1 mm into the top face at x = 0. The end: 3 mm into the top face at y = 20.
+    expect(top.some((p: { x: number; y: number }) => Math.abs(p.x) < 1e-6 && Math.abs(p.y - 1) < 1e-3)).toBe(true);
+    expect(top.some((p: { x: number; y: number }) => Math.abs(p.y - 20) < 1e-6 && Math.abs(p.x - 17) < 1e-3)).toBe(true);
+  });
+
+  it("rounds two edges with the same law, and skips a second edge of one contour", () => {
+    const box = kernel.makeBox(20, 20, 20);
+    const edges = kernel.getSubShapes(box, "edge").filter((e: number) => {
+      const b = kernel.getBoundingBox(e);
+      return b.xmax - b.xmin > 19 && b.zmin > 20 - 1e-6;
+    });
+    expect(edges).toHaveLength(2);
+    const solid = kernel.filletLaw(box, edges, [0, 0, 20, 0, 20, 20], [2, 2], [0, 1, 0, 1], [1, 2, 1, 2]);
+    expect(kernel.isValid(solid)).toBe(true);
+    expect(8000 - kernel.getVolume(solid)).toBeGreaterThan(1.9 * loss(20, 1, 2));
+    // The same edge two times is one contour, thus one round.
+    const once = kernel.filletLaw(box, [edges[0], edges[0]], [0, 0, 20, 0, 0, 20], [2, 2], [0, 1, 0, 1], [1, 2, 1, 2]);
+    expect(Math.abs(8000 - kernel.getVolume(once) - loss(20, 1, 2)) / loss(20, 1, 2)).toBeLessThan(0.03);
+  });
+
+  it("needs the same radius at the start and the end of a closed contour", () => {
+    const cylinder = kernel.makeCylinder(10, 20);
+    const rim = kernel.getSubShapes(cylinder, "edge").find((e: number) => {
+      const b = kernel.getBoundingBox(e);
+      return b.zmin > 20 - 1e-6 && b.xmax - b.xmin > 19;
+    });
+    const solid = kernel.filletLaw(cylinder, [rim], [10, 0, 20], [3], [0, 0.5, 1], [2, 4, 2]);
+    expect(kernel.isValid(solid)).toBe(true);
+    expect(kernel.getVolume(solid)).toBeLessThan(Math.PI * 100 * 20);
+    expect(() => kernel.filletLaw(cylinder, [rim], [10, 0, 20], [2], [0, 1], [2, 3])).toThrow(/same radius/);
+  });
+
+  it("refuses counts that do not match", () => {
+    const box = kernel.makeBox(20, 20, 20);
+    const edge = topFront(box);
+    expect(() => kernel.filletLaw(box, [edge], [0, 0], [2], [0, 1], [1, 3])).toThrow(/start point/);
+    expect(() => kernel.filletLaw(box, [edge], [0, 0, 20], [3], [0, 1], [1, 3])).toThrow(/counts/);
+    expect(() => kernel.filletLaw(box, [edge], [0, 0, 20], [2], [0.2, 1], [1, 3])).toThrow(/from 0 to 1/);
+  });
+});
