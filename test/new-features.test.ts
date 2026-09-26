@@ -157,6 +157,32 @@ describe("OcctErrorCode classification", () => {
         expect(thrown.code).toBe(OcctErrorCode.ImportExportFailed);
     });
 
+    it("keeps a WebAssembly.RuntimeError as the cause, and the message stays the same", async () => {
+        // A trap (for example, out of memory) must stay reachable, so the caller can tell a crashed kernel.
+        const { wrap } = await import(resolve(__dirname, "../ts/src/types.ts"));
+        const trap = new WebAssembly.RuntimeError("unreachable");
+        const catchWrapped = (op: string, fn: () => unknown) => {
+            try {
+                wrap(op, fn);
+            } catch (e) {
+                return e as InstanceType<typeof OcctError>;
+            }
+            return undefined;
+        };
+        const err = catchWrapped("fuse", () => {
+            throw trap;
+        });
+        expect(err).toBeInstanceOf(OcctError);
+        expect(err?.message).toBe("fuse: unreachable");
+        expect(err?.cause).toBe(trap);
+        // A re-tag by an outer wrapped call keeps the first cause.
+        const outer = catchWrapped("loadCached", () => wrap("fuse", () => {
+            throw trap;
+        }));
+        expect(outer?.message).toBe("loadCached: fuse: unreachable");
+        expect(outer?.cause).toBe(trap);
+    });
+
     it("preserves Error inheritance", () => {
         const err = new OcctError("op", "msg");
         expect(err instanceof Error).toBe(true);

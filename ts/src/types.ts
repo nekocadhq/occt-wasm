@@ -608,8 +608,13 @@ export class OcctError extends Error {
     /** Structured error code for programmatic handling. */
     readonly code: OcctErrorCode;
 
-    constructor(operation: string, message: string, code?: OcctErrorCode) {
-        super(`${operation}: ${message}`);
+    /**
+     * @param options - `cause` keeps the original error, for example the
+     *   `WebAssembly.RuntimeError` of a trap, so a caller can tell a crashed
+     *   kernel from a failed operation.
+     */
+    constructor(operation: string, message: string, code?: OcctErrorCode, options?: ErrorOptions) {
+        super(`${operation}: ${message}`, options);
         this.name = "OcctError";
         this.operation = operation;
         this.code = code ?? classifyError(operation, message);
@@ -711,7 +716,7 @@ export function wrap<T>(operation: string, fn: () => T): T {
             // (most-specific) code and just retag the operation, so re-wrapping
             // a passthrough like cacheStep/loadCached doesn't reclassify e.g.
             // ImportExportFailed down to KernelError.
-            throw new OcctError(operation, e.message, e.code);
+            throw new OcctError(operation, e.message, e.code, { cause: e.cause });
         }
         // The C++ facade already prefixes its throws with the method name, and
         // OcctError prepends it again — drop the duplicate.
@@ -720,6 +725,8 @@ export function wrap<T>(operation: string, fn: () => T): T {
         throw new OcctError(
             operation,
             message.startsWith(prefix) ? message.slice(prefix.length) : message,
+            undefined,
+            { cause: e },
         );
     }
 }
