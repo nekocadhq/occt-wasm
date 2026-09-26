@@ -437,7 +437,15 @@ EvolutionData OcctKernel::intersectWithHistory(uint32_t a, uint32_t b, std::vect
     try {
         const auto& shapeA = get(a);
         const auto& shapeB = get(b);
-        BRepAlgoAPI_Common op(shapeA, shapeB);
+        BRepAlgoAPI_Common op;
+        NCollection_List<TopoDS_Shape> arguments;
+        arguments.Append(shapeA);
+        NCollection_List<TopoDS_Shape> tools;
+        tools.Append(shapeB);
+        op.SetArguments(arguments);
+        op.SetTools(tools);
+        op.SetNonDestructive(Standard_True);
+        op.SetRunParallel(Standard_True);
         op.Build();
         if (!op.IsDone() || op.HasErrors()) {
             throw std::runtime_error("intersectWithHistory: operation failed");

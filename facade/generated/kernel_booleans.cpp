@@ -415,7 +415,6 @@ uint32_t OcctKernel::fuseAll(std::vector<uint32_t> shapeIds) {
         fuser.SetTools(tools);
         fuser.SetNonDestructive(Standard_True);
         fuser.SetRunParallel(true);
-        fuser.SetUseOBB(true);
         fuser.Build();
         if (!fuser.IsDone() || fuser.HasErrors()) {
             throw std::runtime_error("fuseAll: operation failed");
@@ -480,7 +479,6 @@ uint32_t OcctKernel::cutAll(uint32_t shapeId, std::vector<uint32_t> toolIds) {
         cutter.SetTools(tools);
         cutter.SetNonDestructive(Standard_True);
         cutter.SetRunParallel(true);
-        cutter.SetUseOBB(true);
         cutter.Build();
         if (!cutter.IsDone() || cutter.HasErrors()) {
             throw std::runtime_error("cutAll: operation failed");
@@ -512,7 +510,7 @@ uint32_t OcctKernel::booleanPipeline(uint32_t baseId, std::vector<int> opCodes, 
             switch (opCodes[i]) {
             case 0: { BRepAlgoAPI_Fuse op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: fuse step failed"); current = op.Shape(); break; }
             case 1: { BRepAlgoAPI_Cut op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: cut step failed"); current = op.Shape(); break; }
-            case 2: { BRepAlgoAPI_Common op(current, tool, progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: intersect step failed"); current = op.Shape(); break; }
+            case 2: { BRepAlgoAPI_Common op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: intersect step failed"); current = op.Shape(); break; }
             default: throw std::runtime_error("booleanPipeline: unknown opCode");
             }
             if (isLast) {

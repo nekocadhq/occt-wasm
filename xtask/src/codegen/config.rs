@@ -284,7 +284,6 @@ fuser.SetArguments(args);
 fuser.SetTools(tools);
 fuser.SetNonDestructive(Standard_True);
 fuser.SetRunParallel(true);
-fuser.SetUseOBB(true);
 fuser.Build();
 if (!fuser.IsDone() || fuser.HasErrors()) {
     throw std::runtime_error(\"fuseAll: operation failed\");
@@ -364,7 +363,6 @@ cutter.SetArguments(args);
 cutter.SetTools(tools);
 cutter.SetNonDestructive(Standard_True);
 cutter.SetRunParallel(true);
-cutter.SetUseOBB(true);
 cutter.Build();
 if (!cutter.IsDone() || cutter.HasErrors()) {
     throw std::runtime_error(\"cutAll: operation failed\");
@@ -404,7 +402,7 @@ for (size_t i = 0; i < opCodes.size(); i++) {
     switch (opCodes[i]) {
     case 0: { BRepAlgoAPI_Fuse op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: fuse step failed\"); current = op.Shape(); break; }
     case 1: { BRepAlgoAPI_Cut op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: cut step failed\"); current = op.Shape(); break; }
-    case 2: { BRepAlgoAPI_Common op(current, tool, progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: intersect step failed\"); current = op.Shape(); break; }
+    case 2: { BRepAlgoAPI_Common op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: intersect step failed\"); current = op.Shape(); break; }
     default: throw std::runtime_error(\"booleanPipeline: unknown opCode\");
     }
     if (isLast) {
@@ -4986,7 +4984,15 @@ return buildEvolution(maker, resultId, shape, inputFaceHashes, hashUpperBound);"
         setup_code: "\
 const auto& shapeA = get(a);
 const auto& shapeB = get(b);
-BRepAlgoAPI_Common op(shapeA, shapeB);
+BRepAlgoAPI_Common op;
+NCollection_List<TopoDS_Shape> arguments;
+arguments.Append(shapeA);
+NCollection_List<TopoDS_Shape> tools;
+tools.Append(shapeB);
+op.SetArguments(arguments);
+op.SetTools(tools);
+op.SetNonDestructive(Standard_True);
+op.SetRunParallel(Standard_True);
 op.Build();
 if (!op.IsDone() || op.HasErrors()) {
     throw std::runtime_error(\"intersectWithHistory: operation failed\");
@@ -6632,8 +6638,16 @@ mod tests {
     #[test]
     fn booleans_build_once_and_keep_their_inputs() {
         // A two-shape constructor of a boolean builds at once, so a Build() after it does the work again.
-        for name in ["fuseAll", "cutAll", "fuseWithHistory", "cutWithHistory"] {
+        for name in [
+            "fuseAll",
+            "cutAll",
+            "fuseWithHistory",
+            "cutWithHistory",
+            "intersectWithHistory",
+        ] {
             let body = spec(name).setup_code;
+            // The oriented box of a half-space is empty, and the boolean then skips it.
+            assert!(!body.contains("SetUseOBB"), "{name}");
             assert_eq!(body.matches(".Build(").count(), 1, "{name}");
             assert_eq!(
                 body.matches("SetNonDestructive(Standard_True)").count(),
@@ -6643,7 +6657,7 @@ mod tests {
             assert!(!body.contains("op(shapeA, shapeB)"), "{name}");
         }
         let pipeline = spec("booleanPipeline").setup_code;
-        for step in ["case 0:", "case 1:"] {
+        for step in ["case 0:", "case 1:", "case 2:"] {
             let line = pipeline
                 .lines()
                 .find(|line| line.trim_start().starts_with(step))

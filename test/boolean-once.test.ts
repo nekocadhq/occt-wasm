@@ -81,8 +81,10 @@ describe("a boolean does not change its inputs", () => {
         cutAll: (a, b) => kernel.cutAll(a, u32([b])),
         fuseWithHistory: (a, b) => kernel.fuseWithHistory(a, b, i32([]), 1000),
         cutWithHistory: (a, b) => kernel.cutWithHistory(a, b, i32([]), 1000),
+        intersectWithHistory: (a, b) => kernel.intersectWithHistory(a, b, i32([]), 1000),
         "booleanPipeline fuse": (a, b) => kernel.booleanPipeline(a, i32([0]), u32([b])),
         "booleanPipeline cut": (a, b) => kernel.booleanPipeline(a, i32([1]), u32([b])),
+        "booleanPipeline intersect": (a, b) => kernel.booleanPipeline(a, i32([2]), u32([b])),
     };
 
     for (const [name, op] of Object.entries(ops)) {
@@ -103,9 +105,10 @@ describe("a boolean does not change its inputs", () => {
 
 describe("a boolean with a half-space", () => {
     // An oriented box (SetUseOBB) of an infinite solid is empty, and the boolean then skips the half-space.
-    it("common and cut keep the correct half of a box", () => {
+    it("common, cut, and cutAll keep the correct half of a box", () => {
         const upper = () => kernel.halfSpace(0, 0, 5, 0, 0, 1);
         expect(kernel.getVolume(kernel.common(kernel.makeBox(10, 10, 10), upper()))).toBeCloseTo(500, 3);
         expect(kernel.getVolume(kernel.cut(kernel.makeBox(10, 10, 10), upper()))).toBeCloseTo(500, 3);
+        expect(kernel.getVolume(kernel.cutAll(kernel.makeBox(10, 10, 10), u32([upper()])))).toBeCloseTo(500, 3);
     });
 });
