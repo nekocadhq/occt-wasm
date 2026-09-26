@@ -943,6 +943,18 @@ export class OcctKernel {
         return wrap("makeNonPlanarFace", () => handle(this.#raw.makeNonPlanarFace(wire)));
     }
 
+    /** An N-sided face through a loop of edges (BRepOffsetAPI_MakeFilling). The edges go in the order of their loop.
+     * With `tangent`, the face is also tangent to `supports[i]` along `edges[i]`, one support face for each edge, so
+     * it meets the faces around the loop with no crease. Without it, `supports` is not read.
+     * @throws OcctError when the edges are out of the order of one closed loop */
+    fillFace(edges: ShapeHandle[], supports: ShapeHandle[], tangent: boolean): ShapeHandle {
+        return wrap("fillFace", () =>
+            this.#withU32(edges, (edgeVec) =>
+                this.#withU32(supports, (supportVec) => handle(this.#raw.fillFace(edgeVec, supportVec, tangent))),
+            ),
+        );
+    }
+
     addHolesInFace(face: ShapeHandle, holeWires: ShapeHandle[]): ShapeHandle {
         return wrap("addHolesInFace", () => {
             return this.#withU32(holeWires, (vec) => handle(this.#raw.addHolesInFace(face, vec)));

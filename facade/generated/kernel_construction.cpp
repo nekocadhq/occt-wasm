@@ -874,3 +874,40 @@ uint32_t OcctKernel::bsplineSurface(std::vector<double> flatPoints, int rows, in
         throw std::runtime_error(std::string("bsplineSurface: ") + e.what());
     }
 }
+
+uint32_t OcctKernel::fillFace(std::vector<uint32_t> edgeIds, std::vector<uint32_t> supportIds, bool tangent) {
+    try {
+        if (edgeIds.empty()) {
+            throw std::runtime_error("fillFace: no edges");
+        }
+        if (tangent && supportIds.size() != edgeIds.size()) {
+            throw std::runtime_error("fillFace: each edge needs one support face");
+        }
+        BRepBuilderAPI_MakeWire wire;
+        for (uint32_t id : edgeIds) {
+            wire.Add(TopoDS::Edge(get(id)));
+            if (!wire.IsDone()) {
+                throw std::runtime_error("fillFace: the edges are not in the order of one loop");
+            }
+        }
+        if (!BRep_Tool::IsClosed(wire.Wire())) {
+            throw std::runtime_error("fillFace: the edges are not in the order of one loop");
+        }
+        BRepOffsetAPI_MakeFilling filler;
+        for (size_t i = 0; i < edgeIds.size(); i++) {
+            const TopoDS_Edge& edge = TopoDS::Edge(get(edgeIds[i]));
+            if (tangent) {
+                filler.Add(edge, TopoDS::Face(get(supportIds[i])), GeomAbs_G1);
+            } else {
+                filler.Add(edge, GeomAbs_C0);
+            }
+        }
+        filler.Build();
+        if (!filler.IsDone()) {
+            throw std::runtime_error("fillFace: construction failed");
+        }
+        return store(filler.Shape());
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("fillFace: ") + e.what());
+    }
+}

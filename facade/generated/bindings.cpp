@@ -195,6 +195,7 @@ EMSCRIPTEN_BINDINGS(occt_wasm) {
         .function("buildTriFace", &OcctKernel::buildTriFace)
         .function("makeTangentArc", &OcctKernel::makeTangentArc)
         .function("bsplineSurface", &OcctKernel::bsplineSurface)
+        .function("fillFace", &OcctKernel::fillFace)
 
         // topology
         .function("getShapeType", &OcctKernel::getShapeType)

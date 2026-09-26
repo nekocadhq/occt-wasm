@@ -889,3 +889,48 @@ describe("filletLaw", () => {
     expect(() => kernel.filletLaw(box, [edge], [0, 0, 20], [2], [0.2, 1], [1, 3])).toThrow(/from 0 to 1/);
   });
 });
+
+describe("fillFace", () => {
+  const rimOf = (cylinder: number) =>
+    kernel.getSubShapes(cylinder, "edge").find((e: number) => {
+      const b = kernel.getBoundingBox(e);
+      return b.zmin > 20 - 1e-6 && b.xmax - b.xmin > 19;
+    });
+
+  it("fills a loop through its edges, with no tangency", () => {
+    const cylinder = kernel.makeCylinder(10, 20);
+    const face = kernel.fillFace([rimOf(cylinder)], [], false);
+    expect(kernel.isValid(face)).toBe(true);
+    expect(Math.abs(kernel.getSurfaceArea(face) - Math.PI * 100) / (Math.PI * 100)).toBeLessThan(0.01);
+  });
+
+  it("fills a loop tangent to the face on the other side of each edge", () => {
+    // A cone from radius 10 at the base to radius 5 at the top, 10 high. Its side leans in by half a unit a unit.
+    const cone = kernel.makeCone(10, 5, 10);
+    const rim = kernel.getSubShapes(cone, "edge").find((e: number) => kernel.getBoundingBox(e).zmin > 10 - 1e-6);
+    const side = kernel.getSubShapes(cone, "face").find((f: number) => kernel.surfaceType(f) === "cone");
+    const face = kernel.fillFace([rim], [side], true);
+    expect(kernel.isValid(face)).toBe(true);
+    // At the rim, the patch goes on at the slope of the side, so their normals agree.
+    const uv = kernel.uvFromPoint(face, { x: 5, y: 0, z: 10 });
+    const n = kernel.surfaceNormal(face, uv.u, uv.v);
+    const cos = (n.x * 2 + n.z) / Math.hypot(n.x, n.y, n.z) / Math.sqrt(5);
+    expect(Math.abs(cos)).toBeGreaterThan(Math.cos((1 * Math.PI) / 180));
+    // With no tangency, the patch is the flat disk, whose normal is up.
+    const flat = kernel.fillFace([rim], [], false);
+    const flatUv = kernel.uvFromPoint(flat, { x: 5, y: 0, z: 10 });
+    expect(Math.abs(kernel.surfaceNormal(flat, flatUv.u, flatUv.v).z)).toBeCloseTo(1, 6);
+  });
+
+  it("refuses edges out of the order of their loop, and a support count that does not match", () => {
+    const box = kernel.makeBox(10, 10, 10);
+    const top = kernel.getSubShapes(box, "face").find((f: number) => kernel.getBoundingBox(f).zmin > 10 - 1e-6);
+    const edges = kernel.getSubShapes(top, "edge");
+    const touch = (a: number, b: number) => kernel.distanceBetween(a, b) < 1e-9;
+    const opposite = edges.slice(1).find((e: number) => !touch(edges[0], e));
+    const others = edges.slice(1).filter((e: number) => e !== opposite);
+    expect(kernel.isValid(kernel.fillFace([edges[0], others[0], opposite, others[1]], [], false))).toBe(true);
+    expect(() => kernel.fillFace([edges[0], opposite, ...others], [], false)).toThrow(/order/);
+    expect(() => kernel.fillFace(edges, [top], true)).toThrow(/support/);
+  });
+});

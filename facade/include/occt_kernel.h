@@ -259,6 +259,7 @@ class OcctKernel {
     uint32_t makeWire(std::vector<uint32_t> edgeIds);
     uint32_t makeFace(uint32_t wireId);
     uint32_t makeNonPlanarFace(uint32_t wireId);
+    uint32_t fillFace(std::vector<uint32_t> edgeIds, std::vector<uint32_t> supportIds, bool tangent);
     uint32_t addHolesInFace(uint32_t faceId, std::vector<uint32_t> holeWireIds);
     uint32_t removeHolesFromFace(uint32_t faceId, std::vector<int> holeIndices);
     uint32_t solidFromShell(uint32_t shellId);

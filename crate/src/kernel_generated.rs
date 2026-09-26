@@ -257,6 +257,7 @@ pub(crate) struct GeneratedFuncs {
     fn_xcaf_export_step: TypedFunc<(u32,), i32>,
     fn_xcaf_import_step: TypedFunc<(i32, i32), u32>,
     fn_xcaf_export_gltf: TypedFunc<(u32, f64, f64), i32>,
+    fn_fill_face: TypedFunc<(i32, i32, i32, i32, i32), u32>,
 }
 
 impl GeneratedFuncs {
@@ -529,6 +530,7 @@ impl GeneratedFuncs {
             fn_xcaf_export_step: instance.get_typed_func(&mut store, "occt_xcaf_export_step")?,
             fn_xcaf_import_step: instance.get_typed_func(&mut store, "occt_xcaf_import_step")?,
             fn_xcaf_export_gltf: instance.get_typed_func(&mut store, "occt_xcaf_export_gltf")?,
+            fn_fill_face: instance.get_typed_func(&mut store, "occt_fill_face")?,
         })
     }
 }
@@ -4571,5 +4573,44 @@ impl crate::kernel::OcctKernel {
             return Err(self.read_last_error("xcaf_export_gltf"));
         }
         self.read_string_result()
+    }
+
+    pub fn fill_face(
+        &mut self,
+        edge_ids: &[ShapeHandle],
+        support_ids: &[ShapeHandle],
+        tangent: bool,
+    ) -> OcctResult<ShapeHandle> {
+        let edge_ids_bytes: Vec<u8> = edge_ids.iter().flat_map(|h| h.0.to_le_bytes()).collect();
+        let edge_ids_ptr = self.write_bytes(&edge_ids_bytes)?;
+        let edge_ids_len = edge_ids.len() as u32;
+        let support_ids_bytes: Vec<u8> =
+            support_ids.iter().flat_map(|h| h.0.to_le_bytes()).collect();
+        let support_ids_ptr = match self.write_bytes(&support_ids_bytes) {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                let _ = self.free_bytes(edge_ids_ptr);
+                return Err(e);
+            }
+        };
+        let support_ids_len = support_ids.len() as u32;
+        let result = self.generated.fn_fill_face.call(
+            &mut self.store,
+            (
+                edge_ids_ptr as i32,
+                edge_ids_len as i32,
+                support_ids_ptr as i32,
+                support_ids_len as i32,
+                i32::from(tangent),
+            ),
+        );
+        self.free_bytes(edge_ids_ptr)?;
+        self.free_bytes(support_ids_ptr)?;
+        let result = result?;
+        self.check_error("fill_face")?;
+        if result == 0 {
+            return Err(self.read_last_error("fill_face"));
+        }
+        Ok(ShapeHandle(result))
     }
 }
