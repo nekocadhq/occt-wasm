@@ -156,4 +156,25 @@ describe("historyImages", () => {
         expect(() => kernel.historyImages(inner, [top], cutInside, "face")).toThrow(/invalid history/);
         expect(() => kernel.historyEnd()).toThrow(/no history/);
     });
+
+    it("follows each face through a sew that joins faces with edges of their own", () => {
+        const box = kernel.makeBox(30, 20, 10);
+        // A copy of each face apart has edges of its own, so the sew makes each face again.
+        const loose = kernel.getSubShapes(box, "face").map((f: number) => kernel.copy(f));
+        const { result, history } = recorded(() => kernel.sewAndSolidify(loose, 1e-3));
+        expect(kernel.isSolid(result)).toBe(true);
+        const images = kernel.historyImages(history, loose, result, "face");
+        const all = images.flatMap((i: { modified: number[] }) => i.modified).sort((a: number, b: number) => a - b);
+        expect(all).toEqual([0, 1, 2, 3, 4, 5]);
+    });
+
+    it("gives the images of all the faces of a solid together", () => {
+        const box = kernel.makeBox(30, 20, 10);
+        const slot = kernel.translate(kernel.makeBox(4, 40, 5), 13, -10, 6);
+        const { result, history } = recorded(() => kernel.cut(box, slot));
+        const [fromBox, fromSlot] = kernel.historyImages(history, [box, slot], result, "face");
+        // The box gives each face of the result but the three walls of the slot, which come from the slot.
+        expect(fromBox.modified).toHaveLength(kernel.getSubShapes(result, "face").length - 3);
+        expect(fromSlot.modified).toHaveLength(3);
+    });
 });

@@ -250,7 +250,8 @@ OcctKernel::~OcctKernel() {
 // --- The history of a step ---
 
 // Follows each shape of `fromIds` through the makers of a step, in order, to the shapes of
-// `type` in `result`. A maker that does not name a shape leaves it as it is. A shape that a
+// `type` in `result`, and an input larger than `type` follows each of its sub-shapes of that
+// type. A maker that does not name a shape leaves it as it is. A shape that a
 // maker generates from a shape stays generated through each maker after it. For each input
 // the answer is the count of the modified images and their indices, then the same for the
 // generated images. An index is the place of the image in TopExp::MapShapes of `result`, the
@@ -262,8 +263,18 @@ std::vector<int> OcctKernel::imagesOf(const std::vector<Handle(BRepTools_History
     TopExp::MapShapes(result, type, targets);
     std::vector<int> out;
     for (uint32_t fromId : fromIds) {
-        // Each shape that the input is now, and whether a maker generated it.
-        std::vector<std::pair<TopoDS_Shape, bool>> now{{get(fromId), false}};
+        // Each shape that the input is now, and whether a maker generated it. An input larger than
+        // `type`, such as a solid for faces, starts as each of its sub-shapes of `type`.
+        std::vector<std::pair<TopoDS_Shape, bool>> now;
+        const TopoDS_Shape& from = get(fromId);
+        if (from.ShapeType() < type) {
+            NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> parts;
+            TopExp::MapShapes(from, type, parts);
+            for (int i = 1; i <= parts.Extent(); ++i)
+                now.emplace_back(parts(i), false);
+        } else {
+            now.emplace_back(from, false);
+        }
         for (const Handle(BRepTools_History) & step : steps) {
             std::vector<std::pair<TopoDS_Shape, bool>> next;
             NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> seen;

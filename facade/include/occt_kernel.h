@@ -566,6 +566,8 @@ class OcctKernel {
     std::unordered_map<uint32_t, std::vector<Handle(BRepTools_History)>> histories_;
     uint32_t nextHistoryId_ = 1;
 
+    /// Whether a history records, so a maker with no history of its own knows to make one.
+    bool recording() const { return !journals_.empty(); }
     /// Adds the history of a maker to the innermost history that records, when one does.
     template <class Algo> void record(Algo& algo, std::initializer_list<TopoDS_Shape> inputs) {
         if (!journals_.empty())

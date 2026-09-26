@@ -649,7 +649,10 @@ if (!maker.IsDone()) {
     throw std::runtime_error(\"chamferOnFaces: operation failed\");
 }
 record(maker, {solid});
-return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferOnFaces\", true));",
+Handle(BRepTools_History) repaired;
+TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferOnFaces\", true, &repaired);
+record(repaired);
+return store(result);",
         includes: &["BRepFilletAPI_MakeChamfer.hxx", "TopExp_Explorer.hxx", "TopoDS.hxx"],
         category: "modeling",
         return_type: ReturnType::ShapeId,
@@ -940,7 +943,10 @@ if (!maker.IsDone()) {
     throw std::runtime_error(\"filletLaw: operation failed\");
 }
 record(maker, {get(solidId)});
-return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletLaw\", true));",
+Handle(BRepTools_History) repaired;
+TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletLaw\", true, &repaired);
+record(repaired);
+return store(result);",
         includes: &[
             "BRepFilletAPI_MakeFillet.hxx", "BRepAdaptor_Curve.hxx", "BRep_Tool.hxx",
             "GCPnts_AbscissaPoint.hxx", "NCollection_Array1.hxx", "TopoDS.hxx", "gp_Pnt2d.hxx",
@@ -2101,6 +2107,23 @@ for (uint32_t fid : faceIds) {
     sewer.Add(get(fid));
 }
 sewer.Perform();
+if (recording()) {
+    // The sew makes each face and edge that it joins again, and says which.
+    Handle(BRepTools_History) history = new BRepTools_History();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> shapes;
+    for (uint32_t fid : faceIds) {
+        TopExp::MapShapes(get(fid), TopAbs_FACE, shapes);
+        TopExp::MapShapes(get(fid), TopAbs_EDGE, shapes);
+    }
+    for (int i = 1; i <= shapes.Extent(); ++i) {
+        const TopoDS_Shape& shape = shapes(i);
+        TopoDS_Shape image;
+        if (sewer.IsModified(shape)) image = sewer.Modified(shape);
+        else if (sewer.IsModifiedSubShape(shape)) image = sewer.ModifiedSubShape(shape);
+        if (!image.IsNull() && !image.IsSame(shape)) history->AddModified(shape, image);
+    }
+    record(history);
+}
 TopoDS_Shape sewn = sewer.SewedShape();
 // Try to make a solid from the sewn shell
 if (sewn.ShapeType() == TopAbs_SHELL) {

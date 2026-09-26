@@ -2367,8 +2367,10 @@ export class OcctKernel {
      * splits has more than one modified image. A face that a fillet makes from
      * an edge is a generated image of that edge. A shape that is in `result`
      * with no change is its own modified image, and a shape with no image is
-     * gone. A maker that records no history, such as a sweep, gives no image of
-     * the shapes that it made again.
+     * gone. A shape larger than `type`, such as a solid for faces, gives the
+     * images of all of its sub-shapes of `type` together. A maker that records
+     * no history, such as a sweep, gives no image of the shapes that it made
+     * again.
      * @throws OcctError */
     historyImages(history: number, from: ShapeHandle[], result: ShapeHandle, type: "face" | "edge"): ShapeImages[] {
         return wrap("historyImages", () => {

@@ -156,10 +156,13 @@ fn emit_fillet_like(buf: &mut String, spec: &MethodSpec) {
     }) {
         let _ = writeln!(buf, "        record(maker, {{get({solid})}});");
     }
+    let _ = writeln!(buf, "        Handle(BRepTools_History) repaired;");
     let _ = writeln!(
         buf,
-        "        return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"{name}\", true));"
+        "        TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"{name}\", true, &repaired);"
     );
+    let _ = writeln!(buf, "        record(repaired);");
+    let _ = writeln!(buf, "        return store(result);");
     let _ = writeln!(buf, "    }} catch (const Standard_Failure& e) {{");
     let _ = writeln!(
         buf,
@@ -393,14 +396,21 @@ fn emit_helper_functions(buf: &mut String, methods: &[&MethodSpec]) {
             "/// The check is topology-only (`BRepCheck_Analyzer`'s GeomControls = false):",
             "/// the failure mode is an open (non-watertight) shell, which is a topological",
             "/// defect, and skipping the geometric controls keeps the per-fillet cost small.",
+            "///",
+            "/// With `repaired`, a repair also gives its history there, so a caller that records the",
+            "/// history of a step follows the faces through the repair too.",
             "static TopoDS_Shape validateFilletResult(const TopoDS_Shape& shape, const char* op,",
-            "                                         bool repair) {",
+            "                                         bool repair,",
+            "                                         Handle(BRepTools_History)* repaired = nullptr) {",
             "    if (shape.IsNull() || BRepCheck_Analyzer(shape, false).IsValid()) return shape;",
             "    if (repair) {",
             "        ShapeFix_Shape fixer(shape);",
             "        fixer.Perform();",
             "        TopoDS_Shape fixed = fixer.Shape();",
-            "        if (!fixed.IsNull() && BRepCheck_Analyzer(fixed, false).IsValid()) return fixed;",
+            "        if (!fixed.IsNull() && BRepCheck_Analyzer(fixed, false).IsValid()) {",
+            "            if (repaired != nullptr) *repaired = fixer.Context()->History();",
+            "            return fixed;",
+            "        }",
             "    }",
             "    throw std::runtime_error(std::string(op) + \": produced an invalid solid\");",
             "}",
