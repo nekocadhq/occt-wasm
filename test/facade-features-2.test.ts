@@ -683,3 +683,92 @@ describe("makeConicalHelixWire", () => {
     expect(() => kernel.makeConicalHelixWire(ORIGIN, AXIS, PITCH, HEIGHT, 1, -Math.PI / 4)).toThrow();
   });
 });
+
+describe("chamferOnFaces", () => {
+  // The edge of a 20 mm box at y = 0, z = 20, along X. Its faces are the top
+  // (z = 20) and the front (y = 0).
+  function topFront(box: number) {
+    const edge = kernel.getSubShapes(box, "edge").find((e: number) => {
+      const b = kernel.getBoundingBox(e);
+      return b.xmax - b.xmin > 19 && b.ymax < 1e-6 && b.zmin > 20 - 1e-6;
+    });
+    const face = (test: (b: { ymax: number; zmin: number }) => boolean) =>
+      kernel.getSubShapes(box, "face").find((f: number) => test(kernel.getBoundingBox(f)));
+    return {
+      edge,
+      top: face((b) => b.zmin > 20 - 1e-6),
+      front: face((b) => b.ymax < 1e-6),
+    };
+  }
+
+  // The bevel face: the one face of the result that is neither at y = 0 nor at z = 20
+  // and that touches both. Its extent gives the set-back on each face.
+  function bevel(solid: number) {
+    const b = kernel
+      .getSubShapes(solid, "face")
+      .map((f: number) => kernel.getBoundingBox(f))
+      .find((b: { ymin: number; ymax: number; zmin: number; zmax: number }) =>
+        b.ymax - b.ymin > 1e-6 && b.zmax - b.zmin > 1e-6 && b.ymax < 19 && b.zmin > 1);
+    return { onTop: b.ymax - b.ymin, onFront: b.zmax - b.zmin };
+  }
+
+  it("sets `distance` back on the given face and `second` on the other", () => {
+    const box = kernel.makeBox(20, 20, 20);
+    const { edge, top, front } = topFront(box);
+    const onTop = kernel.chamferOnFaces(box, [edge], [top], 1, 3);
+    expect(kernel.isValid(onTop)).toBe(true);
+    // The prism that goes: ½ × 1 × 3 × 20.
+    expect(kernel.getVolume(onTop)).toBeCloseTo(8000 - 30, 6);
+    expect(bevel(onTop).onTop).toBeCloseTo(1, 6);
+    expect(bevel(onTop).onFront).toBeCloseTo(3, 6);
+
+    const onFront = kernel.chamferOnFaces(box, [edge], [front], 1, 3);
+    expect(kernel.getVolume(onFront)).toBeCloseTo(8000 - 30, 6);
+    expect(bevel(onFront).onTop).toBeCloseTo(3, 6);
+    expect(bevel(onFront).onFront).toBeCloseTo(1, 6);
+  });
+
+  it("reads `second` as degrees with byAngle", () => {
+    const box = kernel.makeBox(20, 20, 20);
+    const { edge, top } = topFront(box);
+    const solid = kernel.chamferOnFaces(box, [edge], [top], 2, 30, true);
+    const { onTop, onFront } = bevel(solid);
+    expect(onTop).toBeCloseTo(2, 6);
+    // The angle is between the bevel and the reference face, so the other face gets 2 × tan(30°).
+    expect(onFront).toBeCloseTo(2 * Math.tan(Math.PI / 6), 6);
+  });
+
+  it("finds the same first face as chamferDistAngle, from the order of getSubShapes", () => {
+    const box = kernel.makeBox(20, 20, 20);
+    const { edge } = topFront(box);
+    const first = kernel
+      .getSubShapes(box, "face")
+      .find((f: number) => kernel.getSubShapes(f, "edge").some((e: number) => kernel.isSame(e, edge)));
+    const ours = bevel(kernel.chamferOnFaces(box, [edge], [first], 2, 30, true));
+    const theirs = bevel(kernel.chamferDistAngle(box, [edge], 2, 30));
+    expect(ours.onTop).toBeCloseTo(theirs.onTop, 9);
+    expect(ours.onFront).toBeCloseTo(theirs.onFront, 9);
+    expect(ours.onTop).not.toBeCloseTo(ours.onFront, 3);
+  });
+
+  it("chamfers two edges that meet at a corner in one maker", () => {
+    const box = kernel.makeBox(20, 20, 20);
+    const edges = kernel.getSubShapes(box, "edge").filter((e: number) => {
+      const b = kernel.getBoundingBox(e);
+      return b.zmin > 20 - 1e-6 && (b.ymax < 1e-6 || b.xmax < 1e-6);
+    });
+    const top = topFront(box).top;
+    const solid = kernel.chamferOnFaces(box, edges, [top, top], 1, 3);
+    expect(edges).toHaveLength(2);
+    expect(kernel.isValid(solid)).toBe(true);
+    expect(kernel.getVolume(solid)).toBeLessThan(8000 - 30);
+  });
+
+  it("refuses a face that does not hold its edge, and a count that does not match", () => {
+    const box = kernel.makeBox(20, 20, 20);
+    const { edge, top } = topFront(box);
+    const bottom = kernel.getSubShapes(box, "face").find((f: number) => kernel.getBoundingBox(f).zmax < 1e-6);
+    expect(() => kernel.chamferOnFaces(box, [edge], [bottom], 1, 3)).toThrow(/not adjacent/);
+    expect(() => kernel.chamferOnFaces(box, [edge], [top, top], 1, 3)).toThrow(/one face/);
+  });
+});

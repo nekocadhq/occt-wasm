@@ -412,6 +412,39 @@ uint32_t OcctKernel::chamferAsymmetric(uint32_t solidId, uint32_t edgeId, double
     }
 }
 
+uint32_t OcctKernel::chamferOnFaces(uint32_t solidId, std::vector<uint32_t> edgeIds, std::vector<uint32_t> faceIds, double distance, double second, bool byAngle) {
+    try {
+        if (edgeIds.size() != faceIds.size()) {
+            throw std::runtime_error("chamferOnFaces: each edge needs one face");
+        }
+        const auto& solid = get(solidId);
+        BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(solid));
+        for (size_t i = 0; i < edgeIds.size(); i++) {
+            const TopoDS_Edge& edge = TopoDS::Edge(get(edgeIds[i]));
+            const TopoDS_Face& face = TopoDS::Face(get(faceIds[i]));
+            bool adjacent = false;
+            for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More(); ex.Next()) {
+                if (ex.Current().IsSame(edge)) { adjacent = true; break; }
+            }
+            if (!adjacent) {
+                throw std::runtime_error("chamferOnFaces: a face is not adjacent to its edge");
+            }
+            if (byAngle) {
+                maker.AddDA(distance, second * M_PI / 180.0, edge, face);
+            } else {
+                maker.Add(distance, second, edge, face);
+            }
+        }
+        maker.Build();
+        if (!maker.IsDone()) {
+            throw std::runtime_error("chamferOnFaces: operation failed");
+        }
+        return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferOnFaces", true));
+    } catch (const Standard_Failure& e) {
+        throw std::runtime_error(std::string("chamferOnFaces: ") + e.what());
+    }
+}
+
 uint32_t OcctKernel::shell(uint32_t solidId, std::vector<uint32_t> faceIds, double thickness, double tolerance) {
     try {
         NCollection_List<TopoDS_Shape> facesToRemove;

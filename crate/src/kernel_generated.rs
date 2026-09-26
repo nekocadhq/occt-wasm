@@ -50,6 +50,7 @@ pub(crate) struct GeneratedFuncs {
     fn_chamfer: TypedFunc<(u32, i32, i32, f64), u32>,
     fn_chamfer_dist_angle: TypedFunc<(u32, i32, i32, f64, f64), u32>,
     fn_chamfer_asymmetric: TypedFunc<(u32, u32, f64, f64, u32), u32>,
+    fn_chamfer_on_faces: TypedFunc<(u32, i32, i32, i32, i32, f64, f64, i32), u32>,
     fn_shell: TypedFunc<(u32, i32, i32, f64, f64), u32>,
     fn_offset: TypedFunc<(u32, f64, f64), u32>,
     fn_draft: TypedFunc<(u32, u32, f64, f64, f64, f64), u32>,
@@ -293,6 +294,7 @@ impl GeneratedFuncs {
                 .get_typed_func(&mut store, "occt_chamfer_dist_angle")?,
             fn_chamfer_asymmetric: instance
                 .get_typed_func(&mut store, "occt_chamfer_asymmetric")?,
+            fn_chamfer_on_faces: instance.get_typed_func(&mut store, "occt_chamfer_on_faces")?,
             fn_shell: instance.get_typed_func(&mut store, "occt_shell")?,
             fn_offset: instance.get_typed_func(&mut store, "occt_offset")?,
             fn_draft: instance.get_typed_func(&mut store, "occt_draft")?,
@@ -962,6 +964,50 @@ impl crate::kernel::OcctKernel {
         self.check_error("chamfer_asymmetric")?;
         if result == 0 {
             return Err(self.read_last_error("chamfer_asymmetric"));
+        }
+        Ok(ShapeHandle(result))
+    }
+
+    pub fn chamfer_on_faces(
+        &mut self,
+        solid_id: ShapeHandle,
+        edge_ids: &[ShapeHandle],
+        face_ids: &[ShapeHandle],
+        distance: f64,
+        second: f64,
+        by_angle: bool,
+    ) -> OcctResult<ShapeHandle> {
+        let edge_ids_bytes: Vec<u8> = edge_ids.iter().flat_map(|h| h.0.to_le_bytes()).collect();
+        let edge_ids_ptr = self.write_bytes(&edge_ids_bytes)?;
+        let edge_ids_len = edge_ids.len() as u32;
+        let face_ids_bytes: Vec<u8> = face_ids.iter().flat_map(|h| h.0.to_le_bytes()).collect();
+        let face_ids_ptr = match self.write_bytes(&face_ids_bytes) {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                let _ = self.free_bytes(edge_ids_ptr);
+                return Err(e);
+            }
+        };
+        let face_ids_len = face_ids.len() as u32;
+        let result = self.generated.fn_chamfer_on_faces.call(
+            &mut self.store,
+            (
+                solid_id.0,
+                edge_ids_ptr as i32,
+                edge_ids_len as i32,
+                face_ids_ptr as i32,
+                face_ids_len as i32,
+                distance,
+                second,
+                i32::from(by_angle),
+            ),
+        );
+        self.free_bytes(edge_ids_ptr)?;
+        self.free_bytes(face_ids_ptr)?;
+        let result = result?;
+        self.check_error("chamfer_on_faces")?;
+        if result == 0 {
+            return Err(self.read_last_error("chamfer_on_faces"));
         }
         Ok(ShapeHandle(result))
     }

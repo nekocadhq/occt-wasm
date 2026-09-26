@@ -542,6 +542,29 @@ export class OcctKernel {
         );
     }
 
+    /** Chamfer many edges in one maker (BRepFilletAPI_MakeChamfer), each with
+     * its own reference face: `faces[i]` is the face of `edges[i]` that
+     * `distance` is set back on, and it must hold that edge. Without `byAngle`,
+     * `second` is the distance on the other face. With `byAngle`, `second` is
+     * the angle in degrees (AddDA).
+     * @throws OcctError */
+    chamferOnFaces(
+        solid: ShapeHandle,
+        edges: ShapeHandle[],
+        faces: ShapeHandle[],
+        distance: number,
+        second: number,
+        byAngle = false,
+    ): ShapeHandle {
+        return wrap("chamferOnFaces", () =>
+            this.#withU32(edges, (edgeVec) =>
+                this.#withU32(faces, (faceVec) =>
+                    handle(this.#raw.chamferOnFaces(solid, edgeVec, faceVec, distance, second, byAngle)),
+                ),
+            ),
+        );
+    }
+
     /**
      * Hollow a solid by removing the listed faces and offsetting remaining
      * faces inward by `thickness`.

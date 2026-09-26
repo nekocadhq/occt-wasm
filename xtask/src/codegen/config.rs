@@ -600,6 +600,51 @@ return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamfer
         category: "modeling",
         return_type: ReturnType::ShapeId,
     },
+    // One chamfer maker for many edges, each with its own reference face:
+    // faceIds[i] is the face of edgeIds[i] that `distance` is measured on.
+    // Without byAngle, `second` is the distance on the other face. With
+    // byAngle, `second` is the angle in degrees (AddDA).
+    MethodSpec {
+        name: "chamferOnFaces",
+        kind: MethodKind::CustomBody,
+        params: &[
+            FacadeParam::ShapeId("solidId"), FacadeParam::VectorShapeIds("edgeIds"),
+            FacadeParam::VectorShapeIds("faceIds"), FacadeParam::Double("distance"),
+            FacadeParam::Double("second"), FacadeParam::Bool("byAngle"),
+        ],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "\
+if (edgeIds.size() != faceIds.size()) {
+    throw std::runtime_error(\"chamferOnFaces: each edge needs one face\");
+}
+const auto& solid = get(solidId);
+BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(solid));
+for (size_t i = 0; i < edgeIds.size(); i++) {
+    const TopoDS_Edge& edge = TopoDS::Edge(get(edgeIds[i]));
+    const TopoDS_Face& face = TopoDS::Face(get(faceIds[i]));
+    bool adjacent = false;
+    for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More(); ex.Next()) {
+        if (ex.Current().IsSame(edge)) { adjacent = true; break; }
+    }
+    if (!adjacent) {
+        throw std::runtime_error(\"chamferOnFaces: a face is not adjacent to its edge\");
+    }
+    if (byAngle) {
+        maker.AddDA(distance, second * M_PI / 180.0, edge, face);
+    } else {
+        maker.Add(distance, second, edge, face);
+    }
+}
+maker.Build();
+if (!maker.IsDone()) {
+    throw std::runtime_error(\"chamferOnFaces: operation failed\");
+}
+return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferOnFaces\", true));",
+        includes: &["BRepFilletAPI_MakeChamfer.hxx", "TopExp_Explorer.hxx", "TopoDS.hxx"],
+        category: "modeling",
+        return_type: ReturnType::ShapeId,
+    },
     MethodSpec {
         name: "shell",
         kind: MethodKind::CustomBody,

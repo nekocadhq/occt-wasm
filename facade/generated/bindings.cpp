@@ -133,6 +133,7 @@ EMSCRIPTEN_BINDINGS(occt_wasm) {
         .function("chamfer", &OcctKernel::chamfer)
         .function("chamferDistAngle", &OcctKernel::chamferDistAngle)
         .function("chamferAsymmetric", &OcctKernel::chamferAsymmetric)
+        .function("chamferOnFaces", &OcctKernel::chamferOnFaces)
         .function("shell", &OcctKernel::shell)
         .function("offset", &OcctKernel::offset)
         .function("draft", &OcctKernel::draft)

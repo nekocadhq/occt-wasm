@@ -178,6 +178,7 @@ export interface OcctRawKernel {
     chamfer(solidId: number, edgeIds: EmbindVectorU32, distance: number): number;
     chamferDistAngle(solidId: number, edgeIds: EmbindVectorU32, distance: number, angleDeg: number): number;
     chamferAsymmetric(solidId: number, edgeId: number, distance1: number, distance2: number, referenceFaceId: number): number;
+    chamferOnFaces(solidId: number, edgeIds: EmbindVectorU32, faceIds: EmbindVectorU32, distance: number, second: number, byAngle: boolean): number;
     shell(solidId: number, faceIds: EmbindVectorU32, thickness: number, tolerance: number): number;
     offset(solidId: number, distance: number, tolerance: number): number;
     draft(shapeId: number, faceId: number, angle: number, dx: number, dy: number, dz: number): number;
