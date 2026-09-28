@@ -383,7 +383,7 @@ export class XCAFDocument {
     #vecToNumbers(vec: { size(): number; get(i: number): number; delete(): void }): number[] {
         try {
             const result: number[] = [];
-            for (let i = 0; i < vec.size(); i++) {
+            for (let i = 0, n = Number(vec.size()); i < n; i++) {
                 result.push(vec.get(i));
             }
             return result;

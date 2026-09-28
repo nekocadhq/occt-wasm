@@ -25,6 +25,8 @@ pub fn project_root() -> Result<PathBuf> {
 pub fn find_occt_lib_dir(occt_build: &Path) -> Result<PathBuf> {
     let candidates = [
         occt_build.join("lin32/clang/lib"),
+        // A Memory64 build (`OCCT_WASM64=1`) is detected as 64-bit Linux.
+        occt_build.join("lin64/clang/lib"),
         occt_build.join("lin/clang/lib"),
         occt_build.join("wasm32/clang/lib"),
         occt_build.join("lib"),

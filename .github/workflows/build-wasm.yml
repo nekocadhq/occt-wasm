@@ -49,6 +49,10 @@ jobs:
       - name: Build facade + link threaded WASM
         run: cargo xtask build --threads ${{ inputs.release && '--release' || '' }}
 
+      # The 64-bit build, whose memory grows past 4 GB. The builder image bakes its OCCT libs too.
+      - name: Build facade + link 64-bit WASM
+        run: OCCT_WASM64=1 cargo xtask build ${{ inputs.release && '--release' || '' }}
+
       - name: Build TypeScript
         run: |
           cd ts
@@ -63,6 +67,12 @@ jobs:
         run: npx vitest run
         env:
           OCCT_WASM_THREADS: "1"
+
+      # The 64-bit build uses other OCCT libs and gives each address as a double.
+      - name: Run tests (64-bit build)
+        run: npx vitest run
+        env:
+          OCCT_WASM64: "1"
 
       # The suite loads dist/occt-wasm.js directly, so OcctKernel.init()'s
       # dynamic import is only covered here. #271 shipped without it.

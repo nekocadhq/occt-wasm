@@ -49,6 +49,34 @@ pub enum Threads {
     On,
 }
 
+/// Whether this build targets 64-bit WebAssembly (Memory64), with `OCCT_WASM64=1`.
+///
+/// wasm32 caps the heap at 4 GB, and meshing one shape of thousands of solids
+/// fills it. Memory64 lifts the cap to `MAXIMUM_MEMORY_64`, but Safari cannot
+/// run it. It has its own OCCT tree, objects, and output files (`occt-wasm64*`),
+/// so the wasm32 build stays as it is. With `--threads` it builds, but it
+/// aborts once its memory grows past about 4 GB, so the package does not ship it.
+pub fn memory64() -> bool {
+    std::env::var("OCCT_WASM64").is_ok_and(|v| v == "1")
+}
+
+/// The flags of a Memory64 build, for OCCT, the facade, and the link.
+fn memory64_flags() -> &'static [&'static str] {
+    if memory64() { &["-sMEMORY64=1"] } else { &[] }
+}
+
+/// The largest heap of a Memory64 build: 16 GB.
+const MAXIMUM_MEMORY_64: u64 = 17_179_869_184;
+
+/// `name`, with `64` after `occt-wasm` or at the end of a directory, for a Memory64 build.
+fn variant(name: &str) -> String {
+    if !memory64() {
+        return name.to_owned();
+    }
+    name.strip_prefix("occt-wasm")
+        .map_or_else(|| format!("{name}64"), |rest| format!("occt-wasm64{rest}"))
+}
+
 impl Threads {
     /// The C and C++ flags of OCCT and of the facade.
     const fn cflags(self) -> &'static [&'static str] {
@@ -72,26 +100,26 @@ impl Threads {
 
     /// The OCCT build tree of this variant.
     pub fn occt_build_dir(self, root: &Path) -> PathBuf {
-        root.join(match self {
+        root.join(variant(match self {
             Self::Off => "occt/build",
             Self::On => "occt/build-mt",
-        })
+        }))
     }
 
     /// The directory of the facade objects of this variant.
     fn object_dir(self, root: &Path) -> PathBuf {
-        root.join(match self {
+        root.join(variant(match self {
             Self::Off => "build",
             Self::On => "build-mt",
-        })
+        }))
     }
 
     /// The file name of the glue and the `.wasm`, without the extension.
-    const fn output_stem(self) -> &'static str {
-        match self {
+    fn output_stem(self) -> String {
+        variant(match self {
             Self::Off => "occt-wasm",
             Self::On => "occt-wasm-mt",
-        }
+        })
     }
 }
 
@@ -121,7 +149,7 @@ pub fn build_occt(threads: Threads) -> Result<()> {
     } else {
         eprintln!("Step 1a: Configuring OCCT ({threads:?} threads) with emcmake cmake...");
 
-        let c_flags = threads.cflags().join(" ");
+        let c_flags = [threads.cflags(), memory64_flags()].concat().join(" ");
         let cxx_flags = &c_flags;
         let rapidjson_inc = root.join("3rdparty/rapidjson").display().to_string();
 
@@ -225,6 +253,7 @@ fn compile_facade(root: &Path, threads: Threads) -> Result<Vec<PathBuf>> {
         command
             .arg("-std=c++17")
             .args(threads.cflags())
+            .args(memory64_flags())
             // The link below uses mimalloc (see `link_wasm`).
             .arg("-DOCCT_WASM_MIMALLOC=1")
             .arg("-I")
@@ -326,7 +355,11 @@ fn link_wasm(
         "-mtail-call".into(),
         opt_level.into(),
         "-sINITIAL_MEMORY=134217728".into(),
-        "-sMAXIMUM_MEMORY=4294967296".into(),
+        if memory64() {
+            format!("-sMAXIMUM_MEMORY={MAXIMUM_MEMORY_64}")
+        } else {
+            "-sMAXIMUM_MEMORY=4294967296".into()
+        },
         "-sALLOW_MEMORY_GROWTH=1".into(),
         format!("-sSTACK_SIZE={WASM_STACK_SIZE}"),
         "-sEXPORT_ES6=1".into(),
@@ -339,6 +372,8 @@ fn link_wasm(
         "--no-entry".into(),
         format!("--post-js={post_js_str}"),
     ];
+
+    args.extend(memory64_flags().iter().map(|&flag| flag.into()));
 
     // mimalloc instead of dlmalloc: OCCT allocates many small objects, and
     // mimalloc made booleans and STEP export 4-10% faster with one thread. With
@@ -447,10 +482,13 @@ fn optimize_wasm(sh: &Shell, root: &Path, threads: Threads) -> Result<()> {
     // floor. The crate build can use exnref only because wasmtime is configured
     // to accept it; the npm build targets unmodified browsers AND Node, so
     // legacy EH stays. Revisit once exnref is default across the support matrix.
-    let threads_flag: &[&str] = match threads {
-        Threads::Off => &[],
-        Threads::On => &["--enable-threads"],
+    let mut threads_flag: Vec<&str> = match threads {
+        Threads::Off => vec![],
+        Threads::On => vec!["--enable-threads"],
     };
+    if memory64() {
+        threads_flag.push("--enable-memory64");
+    }
     eprintln!("Step 4: Running wasm-opt...");
     cmd!(
         sh,

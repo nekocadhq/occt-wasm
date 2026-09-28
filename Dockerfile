@@ -47,20 +47,21 @@ COPY scripts/fetch-rapidjson.sh scripts/
 RUN bash scripts/fetch-rapidjson.sh
 
 # --- Layer 6: OCCT source + cmake build (THE EXPENSIVE LAYER ~60 min each) ---
-# Only invalidates when OCCT submodule source changes (rare). Two builds:
-# `build` without threads and `build-mt` with pthreads, for the two npm builds.
+# Only invalidates when OCCT submodule source changes (rare). Three builds:
+# `build` without threads and `build-mt` with pthreads, and the 64-bit `build64`
+# with `-sMEMORY64=1` (`OCCT_WASM64=1` in xtask).
 # Uses emcmake cmake directly instead of xtask to avoid coupling
 # this layer to Rust source changes. The flags must match `Threads::cflags`
 # in xtask/src/build.rs.
 # BuildKit cache mount persists ccache across builds.
 COPY occt/ occt/
 RUN --mount=type=cache,target=/cache/ccache \
-    for variant in build build-mt; do \
-        if [ "$variant" = build-mt ]; then \
-            flags="-fwasm-exceptions -O3 -msimd128 -pthread -DOCCT_NO_PLUGINS"; \
-        else \
-            flags="-fwasm-exceptions -O3 -msimd128 -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS"; \
-        fi; \
+    for variant in build build-mt build64; do \
+        case "$variant" in \
+            build-mt*) flags="-fwasm-exceptions -O3 -msimd128 -pthread -DOCCT_NO_PLUGINS" ;; \
+            *) flags="-fwasm-exceptions -O3 -msimd128 -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS" ;; \
+        esac; \
+        case "$variant" in *64) flags="$flags -sMEMORY64=1" ;; esac; \
         mkdir -p "occt/$variant" && cd "occt/$variant" \
         && emcmake cmake .. \
             -G Ninja \
@@ -80,7 +81,7 @@ RUN --mount=type=cache,target=/cache/ccache \
             "-DCMAKE_CXX_FLAGS=$flags" \
             -Wno-dev \
         && cmake --build . --parallel \
-        && echo "OCCT $variant: $(ls -1 lin32/clang/lib/*.a 2>/dev/null | wc -l) static libs" \
+        && echo "OCCT $variant: $(ls -1 lin*/clang/lib/*.a 2>/dev/null | wc -l) static libs" \
         && cd /workspace || exit 1; \
     done
 
@@ -104,6 +105,7 @@ COPY .clang-format commitlint.config.js ./
 RUN --mount=type=cache,target=/cache/ccache \
     cargo xtask build --release \
     && cargo xtask build --release --threads \
+    && OCCT_WASM64=1 cargo xtask build --release \
     && echo "WASM size: $(du -h dist/occt-wasm.wasm | cut -f1), threaded $(du -h dist/occt-wasm-mt.wasm | cut -f1)"
 
 # Copy ts/scripts/ here (after WASM build) so the build cache for the

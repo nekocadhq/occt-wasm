@@ -20,9 +20,12 @@ cargo xtask build-occt          # only on a new checkout or a new OCCT commit
 cargo xtask build-occt --threads
 cargo xtask build --release
 cargo xtask build --release --threads
+OCCT_WASM64=1 cargo xtask build-occt            # the 64-bit OCCT libs, in occt/build64
+OCCT_WASM64=1 cargo xtask build --release       # dist/occt-wasm64.{js,wasm}
 (cd ts && npm run build)        # the raw-access tests load ts/dist
 cargo xtask test
 OCCT_WASM_THREADS=1 npx vitest run  # the same suite on the threaded build
+OCCT_WASM64=1 npx vitest run        # the same suite on the 64-bit build
 cargo xtask build-wasi --release  # after a facade change, so the crate stale-check passes
 ```
 
@@ -57,6 +60,12 @@ CI links against `ghcr.io/nekocadhq/occt-wasm-builder`, which bakes the OCCT sta
 ```
 
 The image is multi-arch, but the libs compile once, natively on the machine that builds. They are WebAssembly, so each platform's image copies the same files.
+
+## 64-bit builds
+
+`OCCT_WASM64=1` builds OCCT and the facade with `-sMEMORY64=1` into `dist/occt-wasm64.{js,wasm}`, whose memory can grow to 16 GB instead of the 4 GB of wasm32. The mesh of one part of the 3,469 solids of the Raspberry Pi 5 board fills 4 GB. `OcctKernel.init({ memory64: true })` loads it. It needs Memory64: Chrome and Edge 133, Firefox 134, Node 24, and Electron 34 or later. Safari can not run it, so NekoCAD loads the 32-bit builds there. The facade gives each address to JavaScript as a double, which holds an address above 4 GB exactly.
+
+The package has no threaded 64-bit build. `OCCT_WASM64=1 cargo xtask build --threads` makes one, but it aborts (`unreachable`) or hangs once its memory grows past about 4 GB, in Node and in Chrome, and 4 GB is when the 64-bit build is needed. The 64-bit build without threads meshes the same model. Try the threaded one again after an Emscripten update.
 
 ## Threads and NekoCAD
 

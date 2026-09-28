@@ -187,10 +187,12 @@ export class OcctKernel {
     readonly #module: OcctWasmModule;
     readonly #releaseDecoder: () => void;
     readonly #threaded: boolean;
+    readonly #memory64: boolean;
 
-    private constructor(module: OcctWasmModule, threaded: boolean) {
+    private constructor(module: OcctWasmModule, threaded: boolean, memory64 = false) {
         this.#module = module;
         this.#threaded = threaded;
+        this.#memory64 = memory64;
         this.#raw = new module.OcctKernel();
         this.#releaseDecoder = addExceptionDecoder((e) => module.getExceptionMessage?.(e));
         kernelRegistry.register(this, { raw: this.#raw, releaseDecoder: this.#releaseDecoder }, this);
@@ -213,12 +215,18 @@ export class OcctKernel {
      * ```
      */
     static async init(options?: InitOptions): Promise<OcctKernel> {
-        const threads = OcctKernel.#useThreads(options);
-        const imported: unknown = threads
-            // @ts-expect-error -- occt-wasm-mt.js is generated at build time, no .d.ts
-            ? await import("./occt-wasm-mt.js")
-            // @ts-expect-error -- occt-wasm.js is generated at build time, no .d.ts
-            : await import("./occt-wasm.js");
+        const memory64 = options?.memory64 === true;
+        // The 64-bit build has no threads: Emscripten's threads break once its memory grows past about 4 GB.
+        const threads = !memory64 && OcctKernel.#useThreads(options);
+        // Each import names its file, so a bundler finds each of the three builds.
+        const imported: unknown = memory64
+            // @ts-expect-error -- occt-wasm64.js is generated at build time, no .d.ts
+            ? await import("./occt-wasm64.js")
+            : threads
+              // @ts-expect-error -- occt-wasm-mt.js is generated at build time, no .d.ts
+              ? await import("./occt-wasm-mt.js")
+              // @ts-expect-error -- occt-wasm.js is generated at build time, no .d.ts
+              : await import("./occt-wasm.js");
         const createModule = (imported as { default: unknown }).default as (
             opts: Record<string, unknown>,
         ) => Promise<OcctWasmModule>;
@@ -291,7 +299,7 @@ export class OcctKernel {
 
         try {
             const module = await Promise.race([createModule(moduleOpts), workerFailure]);
-            return new OcctKernel(module, threads);
+            return new OcctKernel(module, threads, memory64);
         } finally {
             clearTimeout(workerTimer);
         }
@@ -327,6 +335,11 @@ export class OcctKernel {
     /** Whether this kernel runs the threaded build. See {@link InitOptions.threads}. */
     get threaded(): boolean {
         return this.#threaded;
+    }
+
+    /** Whether this kernel runs a 64-bit build, whose memory can grow past 4 GB. See {@link InitOptions.memory64}. */
+    get memory64(): boolean {
+        return this.#memory64;
     }
 
     // =======================================================================
@@ -1746,7 +1759,7 @@ export class OcctKernel {
         return wrap("getFaceCylinderData", () => {
             const vec = this.#raw.getFaceCylinderData(face);
             try {
-                if (vec.size() === 0) return null;
+                if (Number(vec.size()) === 0) return null;
                 return { radius: vec.get(0), isDirect: vec.get(1) !== 0 };
             } finally {
                 vec.delete();
@@ -2563,7 +2576,7 @@ export class OcctKernel {
         HeapArray: Float64ArrayConstructor | Int32ArrayConstructor,
     ): number[] {
         try {
-            return this.#readVector(vec, HeapArray, vec.size());
+            return this.#readVector(vec, HeapArray, Number(vec.size()));
         } finally {
             vec.delete();
         }
@@ -2571,7 +2584,7 @@ export class OcctKernel {
 
     #vecToHandles(vec: EmbindVectorU32): ShapeHandle[] {
         try {
-            return this.#readVector(vec, Uint32Array, vec.size()).map((id) => handle(id));
+            return this.#readVector(vec, Uint32Array, Number(vec.size())).map((id) => handle(id));
         } finally {
             vec.delete();
         }
