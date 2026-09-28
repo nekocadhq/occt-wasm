@@ -100,11 +100,11 @@ struct MeshData {
     ~MeshData();
     MeshData(const MeshData& other);
     MeshData& operator=(const MeshData&) = delete;
-    int getPositionsPtr() const;
-    int getNormalsPtr() const;
-    int getUvsPtr() const;
-    int getIndicesPtr() const;
-    int getFaceGroupsPtr() const;
+    double getPositionsPtr() const;
+    double getNormalsPtr() const;
+    double getUvsPtr() const;
+    double getIndicesPtr() const;
+    double getFaceGroupsPtr() const;
 };
 
 /// Bounding box result.
@@ -123,8 +123,8 @@ struct EdgeData {
     ~EdgeData();
     EdgeData(const EdgeData& other);
     EdgeData& operator=(const EdgeData&) = delete;
-    int getPointsPtr() const;
-    int getEdgeGroupsPtr() const;
+    double getPointsPtr() const;
+    double getEdgeGroupsPtr() const;
 };
 
 /// Evolution data from an operation.
@@ -171,10 +171,10 @@ struct MeshBatchData {
     ~MeshBatchData();
     MeshBatchData(const MeshBatchData& other);
     MeshBatchData& operator=(const MeshBatchData&) = delete;
-    int getPositionsPtr() const;
-    int getNormalsPtr() const;
-    int getIndicesPtr() const;
-    int getShapeOffsetsPtr() const;
+    double getPositionsPtr() const;
+    double getNormalsPtr() const;
+    double getIndicesPtr() const;
+    double getShapeOffsetsPtr() const;
 };
 
 /// XCAF label info returned from queries.
@@ -544,11 +544,11 @@ class OcctKernel {
     // --- Bulk array marshalling (Embind heap transfer) ---
     // Lets the JS wrapper hand large arrays to the kernel in one HEAP copy
     // instead of N per-element push_back() boundary crossings.
-    int allocBytes(int byteCount);
-    void freeBytes(int ptr);
-    std::vector<double> vectorF64FromHeap(int ptr, int count);
-    std::vector<uint32_t> vectorU32FromHeap(int ptr, int count);
-    std::vector<int> vectorI32FromHeap(int ptr, int count);
+    double allocBytes(int byteCount);
+    void freeBytes(double ptr);
+    std::vector<double> vectorF64FromHeap(double ptr, int count);
+    std::vector<uint32_t> vectorU32FromHeap(double ptr, int count);
+    std::vector<int> vectorI32FromHeap(double ptr, int count);
 
   private:
     uint32_t store(const TopoDS_Shape& shape);
