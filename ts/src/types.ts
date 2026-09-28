@@ -126,10 +126,9 @@ export interface InitOptions {
     wasmThreaded?: string | URL | ArrayBuffer | Uint8Array | undefined;
 
     /**
-     * Use the 64-bit build, `occt-wasm64.{js,wasm}`, whose memory can grow past the 4 GB of wasm32 (up to 16 GB). It
-     * needs a runtime with Memory64: Chrome and Edge 133, Firefox 134, Node 24, and Electron 34 or later. Safari can
-     * not run it. It has no threads, because Emscripten's threads break once the memory grows past about 4 GB, so
-     * `threads` does nothing with it. `wasm` then names the 64-bit binary.
+     * Use the 64-bit builds, `occt-wasm64.{js,wasm}` and `occt-wasm64-mt.{js,wasm}`, whose memory can grow past the
+     * 4 GB of wasm32 (up to 16 GB). They need a runtime with Memory64: Chrome and Edge 133, Firefox 134, Node 24, and
+     * Electron 34 or later. Safari can not run them. `wasm` and `wasmThreaded` then name the 64-bit binaries.
      */
     memory64?: boolean | undefined;
 

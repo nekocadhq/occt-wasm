@@ -216,12 +216,14 @@ export class OcctKernel {
      */
     static async init(options?: InitOptions): Promise<OcctKernel> {
         const memory64 = options?.memory64 === true;
-        // The 64-bit build has no threads: Emscripten's threads break once its memory grows past about 4 GB.
-        const threads = !memory64 && OcctKernel.#useThreads(options);
-        // Each import names its file, so a bundler finds each of the three builds.
+        const threads = OcctKernel.#useThreads(options);
+        // Each import names its file, so a bundler finds each of the four builds.
         const imported: unknown = memory64
-            // @ts-expect-error -- occt-wasm64.js is generated at build time, no .d.ts
-            ? await import("./occt-wasm64.js")
+            ? threads
+                // @ts-expect-error -- occt-wasm64-mt.js is generated at build time, no .d.ts
+                ? await import("./occt-wasm64-mt.js")
+                // @ts-expect-error -- occt-wasm64.js is generated at build time, no .d.ts
+                : await import("./occt-wasm64.js")
             : threads
               // @ts-expect-error -- occt-wasm-mt.js is generated at build time, no .d.ts
               ? await import("./occt-wasm-mt.js")
@@ -238,7 +240,10 @@ export class OcctKernel {
         // webpack puts the glue's own reference in a chunk that has no JS file, and
         // the glue then fails to load it. A bundler rewrites this URL like the glue's.
         const wasmSource = threads
-            ? options?.wasmThreaded ?? new URL("./occt-wasm-mt.wasm", import.meta.url)
+            ? options?.wasmThreaded ??
+              (memory64
+                  ? new URL("./occt-wasm64-mt.wasm", import.meta.url)
+                  : new URL("./occt-wasm-mt.wasm", import.meta.url))
             : options?.wasm ?? options?.wasmUrl ?? options?.wasmPath;
 
         if (wasmSource instanceof ArrayBuffer || wasmSource instanceof Uint8Array) {

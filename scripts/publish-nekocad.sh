@@ -4,7 +4,7 @@
 #
 # Usage: ./scripts/publish-nekocad.sh [--dry-run] [--no-build] [--otp CODE]
 #   --dry-run   build, pack, and check, but publish, tag, and push nothing
-#   --no-build  use the WASM already in dist/ (skip the three cargo xtask builds)
+#   --no-build  use the WASM already in dist/ (skip the four cargo xtask builds)
 #   --otp CODE  the one-time code of npm two-factor authentication
 set -euo pipefail
 
@@ -51,10 +51,11 @@ fi
 echo "Publishing $NAME@$VERSION as $NPM_USER"
 
 if [ "$BUILD" = 1 ]; then
-  echo "Building the WASM (32-bit without and with threads, and 64-bit)..."
+  echo "Building the WASM (32-bit and 64-bit, each without and with threads)..."
   cargo xtask build --release
   cargo xtask build --release --threads
   OCCT_WASM64=1 cargo xtask build --release
+  OCCT_WASM64=1 cargo xtask build --release --threads
 fi
 
 echo "Building and packing the TypeScript package..."

@@ -54,8 +54,7 @@ pub enum Threads {
 /// wasm32 caps the heap at 4 GB, and meshing one shape of thousands of solids
 /// fills it. Memory64 lifts the cap to `MAXIMUM_MEMORY_64`, but Safari cannot
 /// run it. It has its own OCCT tree, objects, and output files (`occt-wasm64*`),
-/// so the wasm32 build stays as it is. With `--threads` it builds, but it
-/// aborts once its memory grows past about 4 GB, so the package does not ship it.
+/// so the wasm32 build stays as it is. It links a mimalloc of its own (`build_mimalloc`).
 pub fn memory64() -> bool {
     std::env::var("OCCT_WASM64").is_ok_and(|v| v == "1")
 }
@@ -272,6 +271,84 @@ fn compile_facade(root: &Path, threads: Threads) -> Result<Vec<PathBuf>> {
     Ok(objects)
 }
 
+/// The mimalloc of a 64-bit build, from the sources of the Emscripten of emsdk, as
+/// `libmimalloc` of Emscripten builds it, with segments of 4 MB in place of 32 MB.
+///
+/// mimalloc gets each segment from emmalloc, aligned to the size of a segment. On a 64-bit
+/// build a segment is 32 MB, and each aligned block left a gap that nothing used: the heap grew
+/// to about twice what mimalloc held. A threaded mesh of the Raspberry Pi 5 board then filled the
+/// 16 GB of the build, mimalloc gave NULL, and OCCT crashed. With segments of 4 MB, as on a
+/// 32-bit build, the same mesh ends at about 11 GB. The facade also turns off the arenas that
+/// mimalloc reserves (see kernel.cpp).
+fn build_mimalloc(root: &Path, threads: Threads) -> Result<PathBuf> {
+    let out = threads.object_dir(root).join("mimalloc");
+    let lib = out.join("libmimalloc.a");
+    if lib.exists() {
+        return Ok(lib);
+    }
+    std::fs::create_dir_all(&out)?;
+    let em_root = std::process::Command::new("em-config")
+        .arg("EMSCRIPTEN_ROOT")
+        .output()
+        .context("em-config not found: source emsdk_env.sh first")?;
+    let system = PathBuf::from(String::from_utf8(em_root.stdout)?.trim()).join("system/lib");
+    let mut sources: Vec<PathBuf> = std::fs::read_dir(system.join("mimalloc/src"))?
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "c"))
+        // mimalloc includes these at the source level, as `libmimalloc` of Emscripten says.
+        .filter(|p| {
+            p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                !["alloc-override.c", "free.c", "page-queue.c", "static.c"].contains(&n)
+            })
+        })
+        .collect();
+    sources.push(system.join("mimalloc/src/prim/prim.c"));
+    sources.push(system.join("emmalloc.c"));
+    sources.push(system.join("libc/sbrk.c"));
+    sources.sort();
+    let include = system.join("mimalloc/include");
+    let mut objects = Vec::new();
+    let mut compiles = Vec::new();
+    for src in &sources {
+        let name = src
+            .file_stem()
+            .context("no file stem")?
+            .to_string_lossy()
+            .into_owned();
+        let obj = out.join(format!("{name}.o"));
+        let mut command = std::process::Command::new("emcc");
+        command
+            .args(["-c", "-O3", "-DNDEBUG", "-fno-builtin", "-w"])
+            .args([
+                "-DEMMALLOC_NO_STD_EXPORTS",
+                "-DMI_MALLOC_OVERRIDE",
+                "-DMI_DEBUG=0",
+            ])
+            .args(["-DMI_LIBC_MUSL", "-DMI_SEGMENT_SHIFT=22"])
+            .args(memory64_flags())
+            .args((threads == Threads::On).then_some("-pthread"))
+            .arg("-I")
+            .arg(&include)
+            .arg(src)
+            .arg("-o")
+            .arg(&obj);
+        objects.push(obj);
+        compiles.push((format!("mimalloc/{name}.c"), command));
+    }
+    run_parallel(compiles)?;
+    let status = std::process::Command::new("emar")
+        .arg("rcs")
+        .arg(&lib)
+        .args(&objects)
+        .status()
+        .context("emar not found")?;
+    if !status.success() {
+        bail!("emar failed for {}", lib.display());
+    }
+    Ok(lib)
+}
+
 /// OCCT static libraries not used by the facade — excluded from linking.
 const EXCLUDED_LIBS: &[&str] = &[
     // Persistence / serialization
@@ -303,6 +380,7 @@ const EXCLUDED_LIBS: &[&str] = &[
 fn link_wasm(
     root: &Path,
     objects: &[PathBuf],
+    malloc_lib: Option<&Path>,
     threads: Threads,
     release: bool,
     size: bool,
@@ -379,7 +457,11 @@ fn link_wasm(
     // mimalloc made booleans and STEP export 4-10% faster with one thread. With
     // threads it matters more, since dlmalloc takes one global lock for each
     // allocation and OCCT allocates in every parallel job.
-    args.push("-sMALLOC=mimalloc".into());
+    // A 64-bit build links the mimalloc of `build_mimalloc`, with segments of 4 MB.
+    match malloc_lib {
+        Some(lib) => args.extend(["-sMALLOC=none".to_owned(), lib.display().to_string()]),
+        None => args.push("-sMALLOC=mimalloc".into()),
+    }
 
     // Threads: a pool of Web Workers made before the module runs.
     // EVAL_CTORS runs the static constructors at link time. Emscripten does not
@@ -560,8 +642,23 @@ pub fn build(release: bool, size: bool, threads: Threads) -> Result<()> {
     let objects = compile_facade(&root, threads)?;
     eprintln!("  {} object files ready.", objects.len());
 
+    // Step 2b: The mimalloc of a 64-bit build
+    let malloc_lib = if memory64() {
+        eprintln!("Step 2b: Compiling mimalloc with segments of 4 MB...");
+        Some(build_mimalloc(&root, threads)?)
+    } else {
+        None
+    };
+
     // Step 3: Link
-    link_wasm(&root, &objects, threads, release, size)?;
+    link_wasm(
+        &root,
+        &objects,
+        malloc_lib.as_deref(),
+        threads,
+        release,
+        size,
+    )?;
     patch_glue_for_bundlers(&root, threads)?;
 
     // Step 4: wasm-opt (release only)

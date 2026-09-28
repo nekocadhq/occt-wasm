@@ -85,6 +85,17 @@ EM_JS(int, occtWorkerPoolSize, (), { return PThread.unusedWorkers.length; });
 extern "C" struct mallinfo mallinfo() {
     return {};
 }
+
+// mimalloc reserves memory in arenas, as if virtual memory cost nothing: 256 MB at first on a
+// 64-bit build, and twice that after each 8 arenas, up to 2 GB each. WebAssembly has no virtual
+// memory, so each reserve takes real memory from the heap and never gives it back. The threads of
+// a mesh each took arenas until a 64-bit build filled its 16 GB, mimalloc gave NULL, and OCCT
+// crashed. With no arena reserve, each 32 MB segment comes from the system allocator on its own.
+// `mi_option_arena_reserve` is 23 in the mimalloc of emsdk 5.0.3.
+extern "C" void mi_option_set(int option, long value);
+__attribute__((constructor(101))) static void noMimallocArenas() {
+    mi_option_set(23, 0);
+}
 #endif
 
 namespace {

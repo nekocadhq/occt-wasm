@@ -17,7 +17,9 @@
     "./dist/occt-wasm-mt.js": "./dist/occt-wasm-mt.js",
     "./dist/occt-wasm-mt.wasm": "./dist/occt-wasm-mt.wasm",
     "./dist/occt-wasm64.js": "./dist/occt-wasm64.js",
-    "./dist/occt-wasm64.wasm": "./dist/occt-wasm64.wasm"
+    "./dist/occt-wasm64.wasm": "./dist/occt-wasm64.wasm",
+    "./dist/occt-wasm64-mt.js": "./dist/occt-wasm64-mt.js",
+    "./dist/occt-wasm64-mt.wasm": "./dist/occt-wasm64-mt.wasm"
   },
   "files": [
     "dist/"
