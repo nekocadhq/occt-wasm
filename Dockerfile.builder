@@ -28,17 +28,18 @@ WORKDIR /workspace
 COPY scripts/fetch-rapidjson.sh scripts/
 RUN bash scripts/fetch-rapidjson.sh
 
-# OCCT source + build: `build` without threads, `build-mt` with pthreads.
+# OCCT source + build: `build` without threads, `build-mt` with pthreads, and the
+# 64-bit `build64` and `build-mt64` with `-sMEMORY64=1` (`OCCT_WASM64=1` in xtask).
 # ~50 min each on a cold cache; a few minutes when ccache has the objects.
-# These flags must match `Threads::cflags` in xtask/src/build.rs.
+# These flags must match `Threads::cflags` and `memory64_flags` in xtask/src/build.rs.
 COPY occt/ occt/
 RUN --mount=type=cache,target=/cache/ccache \
-    for variant in build build-mt; do \
-        if [ "$variant" = build-mt ]; then \
-            flags="-fwasm-exceptions -O3 -msimd128 -pthread -DOCCT_NO_PLUGINS"; \
-        else \
-            flags="-fwasm-exceptions -O3 -msimd128 -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS"; \
-        fi; \
+    for variant in build build-mt build64 build-mt64; do \
+        case "$variant" in \
+            build-mt*) flags="-fwasm-exceptions -O3 -msimd128 -pthread -DOCCT_NO_PLUGINS" ;; \
+            *) flags="-fwasm-exceptions -O3 -msimd128 -DIGNORE_NO_ATOMICS=1 -DOCCT_NO_PLUGINS" ;; \
+        esac; \
+        case "$variant" in *64) flags="$flags -sMEMORY64=1" ;; esac; \
         mkdir -p "occt/$variant" && cd "occt/$variant" \
         && emcmake cmake .. \
             -G Ninja \
@@ -58,7 +59,7 @@ RUN --mount=type=cache,target=/cache/ccache \
             "-DCMAKE_CXX_FLAGS=$flags" \
             -Wno-dev \
         && cmake --build . --parallel \
-        && echo "OCCT $variant: $(ls -1 lin32/clang/lib/*.a 2>/dev/null | wc -l) static libs" \
+        && echo "OCCT $variant: $(ls -1 lin*/clang/lib/*.a 2>/dev/null | wc -l) static libs" \
         && cd /workspace || exit 1; \
     done
 
