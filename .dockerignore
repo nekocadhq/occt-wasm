@@ -5,6 +5,9 @@ build-mt/
 build-wasi/
 occt/build/
 occt/build-mt/
+occt/build64/
+occt/build-mt64/
+occt/build-wasi/
 target/
 graft/
 node_modules/
