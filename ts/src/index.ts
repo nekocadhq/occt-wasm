@@ -2685,11 +2685,12 @@ export class OcctKernel {
     }
 
     #curvatureDataFromEmbind(vec: EmbindVectorF64): CurvatureData {
+        // The facade gives [mean, gaussian, max, min] (OcctKernel::surfaceCurvature in kernel_query.cpp).
         const result: CurvatureData = {
-            min: vec.get(0),
-            max: vec.get(1),
-            gaussian: vec.get(2),
-            mean: vec.get(3),
+            mean: vec.get(0),
+            gaussian: vec.get(1),
+            max: vec.get(2),
+            min: vec.get(3),
         };
         vec.delete();
         return result;

@@ -69,21 +69,27 @@ describe("TS wrapper patterns: structured returns (uvBounds → UVBounds)", () =
         faces.delete();
     });
 
-    it("surfaceCurvature raw data can be destructured into CurvatureData shape", () => {
-        const sphere = kernel.makeSphere(10);
-        const faces = kernel.getSubShapes(sphere, "face");
-        const raw = kernel.surfaceCurvature(faces.get(0), 0, 0);
+    it("surfaceCurvature raw data is [mean, gaussian, max, min], as #curvatureDataFromEmbind reads it", () => {
+        // A cylinder of radius 5: one principal curvature is 1/5 and the other 0, so the
+        // gaussian is 0 and the mean is half of 1/5. The order is the one of kernel_query.cpp.
+        const cyl = kernel.makeCylinder(5, 20);
+        const faces = kernel.getSubShapes(cyl, "face");
+        let side = -1;
+        for (let i = 0; i < faces.size(); i++) {
+            if (kernel.surfaceType(faces.get(i)) === "cylinder") side = faces.get(i);
+        }
+        expect(side).toBeGreaterThanOrEqual(0);
+        const uv = kernel.uvBounds(side);
+        const raw = kernel.surfaceCurvature(side, (uv.get(0) + uv.get(1)) / 2, (uv.get(2) + uv.get(3)) / 2);
         expect(raw.size()).toBe(4);
-        const min = raw.get(0);
-        const max = raw.get(1);
-        const gaussian = raw.get(2);
-        const mean = raw.get(3);
-        // Verify we got 4 numbers (exact values depend on UV parameterization)
-        expect(typeof min).toBe("number");
-        expect(typeof max).toBe("number");
-        expect(typeof gaussian).toBe("number");
-        expect(typeof mean).toBe("number");
+        const [mean, gaussian, max, min] = [raw.get(0), raw.get(1), raw.get(2), raw.get(3)];
+        expect(Math.abs(mean)).toBeCloseTo(0.1, 6);
+        expect(gaussian).toBeCloseTo(0, 6);
+        expect(max).toBeGreaterThanOrEqual(min);
+        expect(gaussian).toBeCloseTo(max * min, 6);
+        expect(mean).toBeCloseTo((max + min) / 2, 6);
         raw.delete();
+        uv.delete();
         faces.delete();
     });
 
