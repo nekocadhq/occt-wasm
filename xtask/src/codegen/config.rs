@@ -557,7 +557,7 @@ maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"chamferDistAngle: operation failed\");
 }
-return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferDistAngle\", true));",
+return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferDistAngle\", true, breakRange()));",
         includes: &["BRepFilletAPI_MakeChamfer.hxx", "TopExp_Explorer.hxx", "TopoDS.hxx"],
         category: "modeling",
         return_type: ReturnType::ShapeId,
@@ -606,7 +606,7 @@ maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"chamferAsymmetric: operation failed\");
 }
-return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferAsymmetric\", true));",
+return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferAsymmetric\", true, breakRange()));",
         includes: &["BRepFilletAPI_MakeChamfer.hxx", "TopExp_Explorer.hxx", "TopoDS.hxx"],
         category: "modeling",
         return_type: ReturnType::ShapeId,
@@ -653,7 +653,7 @@ if (!maker.IsDone()) {
 }
 record(maker, {solid});
 Handle(BRepTools_History) repaired;
-TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferOnFaces\", true, &repaired);
+TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferOnFaces\", true, breakRange(), &repaired);
 record(repaired);
 return store(result);",
         includes: &["BRepFilletAPI_MakeChamfer.hxx", "TopExp_Explorer.hxx", "TopoDS.hxx"],
@@ -847,7 +847,7 @@ maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"filletVariable: operation failed\");
 }
-return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletVariable\", true));",
+return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletVariable\", true, breakRange()));",
         includes: &["BRepFilletAPI_MakeFillet.hxx", "TopoDS.hxx"],
         category: "modeling",
         return_type: ReturnType::ShapeId,
@@ -950,7 +950,7 @@ if (!maker.IsDone()) {
 }
 record(maker, {get(solidId)});
 Handle(BRepTools_History) repaired;
-TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletLaw\", true, &repaired);
+TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletLaw\", true, breakRange(), &repaired);
 record(repaired);
 return store(result);",
         includes: &[
@@ -991,7 +991,7 @@ try {
         }
         maker.Build(breakRange());
         if (!maker.IsDone()) throw std::runtime_error(\"filletBatch: fillet failed on solid \" + std::to_string(i));
-        results.push_back(store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletBatch\", true)));
+        results.push_back(store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletBatch\", true, breakRange())));
         edgeOffset += static_cast<size_t>(edgeCounts[i]);
     }
 } catch (...) {
@@ -4905,7 +4905,7 @@ maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"filletWithHistory: operation failed\");
 }
-uint32_t resultId = store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletWithHistory\", false));
+uint32_t resultId = store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletWithHistory\", false, breakRange()));
 return buildEvolution(maker, resultId, solid, inputFaceHashes, hashUpperBound);",
         includes: &["BRepFilletAPI_MakeFillet.hxx", "TopoDS.hxx", "TopExp_Explorer.hxx", "TopTools_ShapeMapHasher.hxx"],
         category: "evolution",
@@ -5034,7 +5034,7 @@ maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"chamferWithHistory: operation failed\");
 }
-uint32_t resultId = store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferWithHistory\", false));
+uint32_t resultId = store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"chamferWithHistory\", false, breakRange()));
 return buildEvolution(maker, resultId, solid, inputFaceHashes, hashUpperBound);",
         includes: &["BRepFilletAPI_MakeChamfer.hxx", "TopoDS.hxx", "TopExp_Explorer.hxx", "TopTools_ShapeMapHasher.hxx"],
         category: "evolution",

@@ -227,13 +227,16 @@ static TopoDS_Shape unwrapSingletonSolid(const TopoDS_Shape& shape) {
 ///
 /// With `repaired`, a repair also gives its history there, so a caller that records the
 /// history of a step follows the faces through the repair too.
+///
+/// The repair gets `range` (the breakRange() of the kernel), so a user break also
+/// stops a long repair.
 static TopoDS_Shape validateFilletResult(const TopoDS_Shape& shape, const char* op,
-                                         bool repair,
+                                         bool repair, const Message_ProgressRange& range,
                                          Handle(BRepTools_History)* repaired = nullptr) {
     if (shape.IsNull() || BRepCheck_Analyzer(shape, false).IsValid()) return shape;
     if (repair) {
         ShapeFix_Shape fixer(shape);
-        fixer.Perform();
+        fixer.Perform(range);
         TopoDS_Shape fixed = fixer.Shape();
         if (!fixed.IsNull() && BRepCheck_Analyzer(fixed, false).IsValid()) {
             if (repaired != nullptr) *repaired = fixer.Context()->History();
@@ -417,7 +420,7 @@ EvolutionData OcctKernel::filletWithHistory(uint32_t solidId, std::vector<uint32
             if (!maker.IsDone()) {
                 throw std::runtime_error("filletWithHistory: operation failed");
             }
-            uint32_t resultId = store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletWithHistory", false));
+            uint32_t resultId = store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletWithHistory", false, breakRange()));
             return buildEvolution(maker, resultId, solid, inputFaceHashes, hashUpperBound);
         }();
         breakScope.throwIfBroke("filletWithHistory");
@@ -548,7 +551,7 @@ EvolutionData OcctKernel::chamferWithHistory(uint32_t solidId, std::vector<uint3
             if (!maker.IsDone()) {
                 throw std::runtime_error("chamferWithHistory: operation failed");
             }
-            uint32_t resultId = store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferWithHistory", false));
+            uint32_t resultId = store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferWithHistory", false, breakRange()));
             return buildEvolution(maker, resultId, solid, inputFaceHashes, hashUpperBound);
         }();
         breakScope.throwIfBroke("chamferWithHistory");

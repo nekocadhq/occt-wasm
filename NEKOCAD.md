@@ -8,6 +8,7 @@ This is the NekoCAD fork of [andymai/occt-wasm](https://github.com/andymai/occt-
 - A NekoCAD version is a prerelease of the upstream version it is built on: `5.1.1-nekocad.1`, then `5.1.1-nekocad.2`. After a merge of upstream 5.2.0, the next one is `5.2.0-nekocad.1`.
 - The `occt` submodule is on `nekocadhq/OCCT`. A new OCCT commit also needs a new builder image (see below).
 - The fork of OCCT lets a fillet and a chamfer stop: `ChFi3d_Builder::Compute` takes the progress range of `BRepFilletAPI_MakeFillet::Build` and `BRepFilletAPI_MakeChamfer::Build`, and asks `UserBreak` before each stripe, each corner, and the build of the result. The facade stops a call with it (`BreakIndicator` in `facade/include/occt_kernel.h`).
+- The fork also ends two loops that did not end (`test/hang-cases.test.ts`): the walk of `ReorderFaces` in `ChFi3d_Builder_1.cxx`, in `BRepFilletAPI_MakeFillet::Add`, and a retry of a cut that changed nothing in `ShapeFix_IntersectionTool::FixIntersectingWires`, in the repair after a fillet or a chamfer. `FixIntersectingWires` also stops at a user break, and the facade gives the break range to that repair and asks for a break before each `Add`.
 
 ## Build from scratch
 

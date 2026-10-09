@@ -227,13 +227,16 @@ static TopoDS_Shape unwrapSingletonSolid(const TopoDS_Shape& shape) {
 ///
 /// With `repaired`, a repair also gives its history there, so a caller that records the
 /// history of a step follows the faces through the repair too.
+///
+/// The repair gets `range` (the breakRange() of the kernel), so a user break also
+/// stops a long repair.
 static TopoDS_Shape validateFilletResult(const TopoDS_Shape& shape, const char* op,
-                                         bool repair,
+                                         bool repair, const Message_ProgressRange& range,
                                          Handle(BRepTools_History)* repaired = nullptr) {
     if (shape.IsNull() || BRepCheck_Analyzer(shape, false).IsValid()) return shape;
     if (repair) {
         ShapeFix_Shape fixer(shape);
-        fixer.Perform();
+        fixer.Perform(range);
         TopoDS_Shape fixed = fixer.Shape();
         if (!fixed.IsNull() && BRepCheck_Analyzer(fixed, false).IsValid()) {
             if (repaired != nullptr) *repaired = fixer.Context()->History();
@@ -353,6 +356,7 @@ uint32_t OcctKernel::fillet(uint32_t solidId, std::vector<uint32_t> edgeIds, dou
         auto result = [&]() -> uint32_t {
             BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidId)));
             for (uint32_t eid : edgeIds) {
+                if (breakAsked()) throw std::runtime_error("fillet: interrupted");
                 maker.Add(radius, TopoDS::Edge(get(eid)));
             }
             maker.Build(breakRange());
@@ -361,7 +365,7 @@ uint32_t OcctKernel::fillet(uint32_t solidId, std::vector<uint32_t> edgeIds, dou
             }
             record(maker, {get(solidId)});
             Handle(BRepTools_History) repaired;
-            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "fillet", true, &repaired);
+            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "fillet", true, breakRange(), &repaired);
             record(repaired);
             return store(result);
         }();
@@ -382,6 +386,7 @@ uint32_t OcctKernel::chamfer(uint32_t solidId, std::vector<uint32_t> edgeIds, do
         auto result = [&]() -> uint32_t {
             BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(get(solidId)));
             for (uint32_t eid : edgeIds) {
+                if (breakAsked()) throw std::runtime_error("chamfer: interrupted");
                 maker.Add(distance, TopoDS::Edge(get(eid)));
             }
             maker.Build(breakRange());
@@ -390,7 +395,7 @@ uint32_t OcctKernel::chamfer(uint32_t solidId, std::vector<uint32_t> edgeIds, do
             }
             record(maker, {get(solidId)});
             Handle(BRepTools_History) repaired;
-            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamfer", true, &repaired);
+            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamfer", true, breakRange(), &repaired);
             record(repaired);
             return store(result);
         }();
@@ -431,7 +436,7 @@ uint32_t OcctKernel::chamferDistAngle(uint32_t solidId, std::vector<uint32_t> ed
             if (!maker.IsDone()) {
                 throw std::runtime_error("chamferDistAngle: operation failed");
             }
-            return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferDistAngle", true));
+            return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferDistAngle", true, breakRange()));
         }();
         breakScope.throwIfBroke("chamferDistAngle");
         return result;
@@ -478,7 +483,7 @@ uint32_t OcctKernel::chamferAsymmetric(uint32_t solidId, uint32_t edgeId, double
             if (!maker.IsDone()) {
                 throw std::runtime_error("chamferAsymmetric: operation failed");
             }
-            return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferAsymmetric", true));
+            return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferAsymmetric", true, breakRange()));
         }();
         breakScope.throwIfBroke("chamferAsymmetric");
         return result;
@@ -522,7 +527,7 @@ uint32_t OcctKernel::chamferOnFaces(uint32_t solidId, std::vector<uint32_t> edge
             }
             record(maker, {solid});
             Handle(BRepTools_History) repaired;
-            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferOnFaces", true, &repaired);
+            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferOnFaces", true, breakRange(), &repaired);
             record(repaired);
             return store(result);
         }();
@@ -727,7 +732,7 @@ uint32_t OcctKernel::filletVariable(uint32_t solidId, uint32_t edgeId, double st
             if (!maker.IsDone()) {
                 throw std::runtime_error("filletVariable: operation failed");
             }
-            return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletVariable", true));
+            return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletVariable", true, breakRange()));
         }();
         breakScope.throwIfBroke("filletVariable");
         return result;
@@ -820,7 +825,7 @@ uint32_t OcctKernel::filletLaw(uint32_t solidId, std::vector<uint32_t> edgeIds, 
             }
             record(maker, {get(solidId)});
             Handle(BRepTools_History) repaired;
-            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletLaw", true, &repaired);
+            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletLaw", true, breakRange(), &repaired);
             record(repaired);
             return store(result);
         }();
@@ -858,7 +863,7 @@ std::vector<uint32_t> OcctKernel::filletBatch(std::vector<uint32_t> solidIds, st
                     }
                     maker.Build(breakRange());
                     if (!maker.IsDone()) throw std::runtime_error("filletBatch: fillet failed on solid " + std::to_string(i));
-                    results.push_back(store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletBatch", true)));
+                    results.push_back(store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletBatch", true, breakRange())));
                     edgeOffset += static_cast<size_t>(edgeCounts[i]);
                 }
             } catch (...) {

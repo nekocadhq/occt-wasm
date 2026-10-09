@@ -624,6 +624,11 @@ class OcctKernel {
     /// each OCCT algorithm that asks UserBreak. config::validate checks the specs for it.
     Message_ProgressRange breakRange() { return breaker_->Start(); }
 
+    /// True when the interrupt flag holds the break token. For a loop of the facade around OCCT
+    /// calls that take no range, such as BRepFilletAPI_MakeFillet::Add. A true answer counts as
+    /// a break, so the method then throws "<name>: interrupted".
+    bool breakAsked() { return breaker_->UserBreak(); }
+
     Handle(BreakIndicator) breaker_ = new BreakIndicator();
 
     uint32_t store(const TopoDS_Shape& shape);

@@ -195,6 +195,11 @@ fn emit_fillet_like(buf: &mut String, spec: &MethodSpec) {
     if let Some(vec_name) = vec_param {
         let scalar_args = scalar_params.join(", ");
         let _ = writeln!(body, "for (uint32_t eid : {vec_name}) {{");
+        // Each Add finds the chain of tangent edges, which can be long, and it takes no range.
+        let _ = writeln!(
+            body,
+            "    if (breakAsked()) throw std::runtime_error(\"{name}: interrupted\");"
+        );
         let _ = writeln!(
             body,
             "    maker.Add({scalar_args}, TopoDS::Edge(get(eid)));"
@@ -218,7 +223,7 @@ fn emit_fillet_like(buf: &mut String, spec: &MethodSpec) {
     let _ = writeln!(body, "Handle(BRepTools_History) repaired;");
     let _ = writeln!(
         body,
-        "TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"{name}\", true, &repaired);"
+        "TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"{name}\", true, breakRange(), &repaired);"
     );
     let _ = writeln!(body, "record(repaired);");
     let _ = writeln!(body, "return store(result);");
@@ -421,13 +426,16 @@ fn emit_helper_functions(buf: &mut String, methods: &[&MethodSpec]) {
             "///",
             "/// With `repaired`, a repair also gives its history there, so a caller that records the",
             "/// history of a step follows the faces through the repair too.",
+            "///",
+            "/// The repair gets `range` (the breakRange() of the kernel), so a user break also",
+            "/// stops a long repair.",
             "static TopoDS_Shape validateFilletResult(const TopoDS_Shape& shape, const char* op,",
-            "                                         bool repair,",
+            "                                         bool repair, const Message_ProgressRange& range,",
             "                                         Handle(BRepTools_History)* repaired = nullptr) {",
             "    if (shape.IsNull() || BRepCheck_Analyzer(shape, false).IsValid()) return shape;",
             "    if (repair) {",
             "        ShapeFix_Shape fixer(shape);",
-            "        fixer.Perform();",
+            "        fixer.Perform(range);",
             "        TopoDS_Shape fixed = fixer.Shape();",
             "        if (!fixed.IsNull() && BRepCheck_Analyzer(fixed, false).IsValid()) {",
             "            if (repaired != nullptr) *repaired = fixer.Context()->History();",
