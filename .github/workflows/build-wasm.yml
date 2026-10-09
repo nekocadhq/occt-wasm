@@ -23,10 +23,13 @@ jobs:
         with:
           submodules: recursive
 
+      # All four variants: without the 64-bit libs, each 64-bit step builds OCCT again (about 1 h each).
       - name: Link pre-built OCCT libs
         run: |
           cp -r /workspace/occt/build occt/build
           cp -r /workspace/occt/build-mt occt/build-mt
+          cp -r /workspace/occt/build64 occt/build64
+          cp -r /workspace/occt/build-mt64 occt/build-mt64
           cp -r /workspace/3rdparty 3rdparty
 
       - name: Setup Node
