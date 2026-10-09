@@ -67,33 +67,47 @@ function plate(k: Kernel, count: number, radius = 3): { body: Shape; tools: Shap
 
 interface Case {
     name: string;
-    /** Runs the operation, and gives what must be the same after a stop. */
-    run: (k: Kernel) => number[];
+    /** Makes the inputs, with no algorithm that asks for a break. */
+    setup: (k: Kernel) => Shape[];
+    /** Runs the operation on the inputs, and gives what must be the same after a stop. */
+    run: (k: Kernel, inputs: Shape[]) => number[];
 }
+
+/** The volume and the count of faces of a solid. */
+const measure = (k: Kernel, shape: Shape) => [k.getVolume(shape), k.getSubShapes(shape, "face").length];
 
 const CASES: Case[] = [
     {
         name: "a boolean",
-        run: (k) => {
+        setup: (k) => {
             const { body, tools } = plate(k, 3);
-            const result = k.cutAll(body, tools);
-            return [k.getVolume(result), k.getSubShapes(result, "face").length];
+            return [body, ...tools];
         },
+        run: (k, [body, ...tools]) => measure(k, k.cutAll(body!, tools)),
     },
     {
         name: "a shell",
-        run: (k) => {
+        setup: (k) => {
             const box = k.makeBox(20, 20, 20);
-            const top = k.getSubShapes(box, "face")[5]!;
-            const result = k.shell(box, [top], 2, 1e-6);
-            return [k.getVolume(result), k.getSubShapes(result, "face").length];
+            return [box, k.getSubShapes(box, "face")[5]!];
         },
+        run: (k, [box, top]) => measure(k, k.shell(box!, [top!], 2, 1e-6)),
+    },
+    {
+        // A fillet asks for a break only in the fork of OCCT (ChFi3d_Builder::Compute).
+        name: "a fillet of each edge of a body with many edges",
+        setup: (k) => {
+            const { body, tools } = plate(k, 3);
+            const holed = k.getSubShapes(k.cutAll(body, tools), "solid")[0]!;
+            return [holed, ...k.getSubShapes(holed, "edge")];
+        },
+        run: (k, [holed, ...edges]) => measure(k, k.fillet(holed!, edges, 0.5)),
     },
     {
         name: "a mesh",
-        run: (k) => {
-            const sphere = k.makeSphere(10);
-            const mesh = k.tessellate(sphere, { linearDeflection: 0.05 });
+        setup: (k) => [k.makeSphere(10)],
+        run: (k, [sphere]) => {
+            const mesh = k.tessellate(sphere!, { linearDeflection: 0.05 });
             return [mesh.positions.length, mesh.indices.length];
         },
     },
@@ -110,46 +124,39 @@ describe.skipIf(!threads)("a stop on the threaded build", () => {
 
     for (const c of CASES) {
         describe(c.name, () => {
-            it("throws Interrupted when the flag holds the token before the call", () => {
-                const before = c.run(kernel);
-                kernel.releaseAll();
+            it("throws Interrupted when the flag holds the token before the call, and adds no handle", () => {
+                const inputs = c.setup(kernel);
                 const handles = kernel.shapeCount;
                 Atomics.store(kernel.interruptFlag()!, 0, 7);
                 kernel.setBreakToken(7);
-                // The inputs come before the token, so only the operation can stop.
-                expect(codeOf(() => c.run(kernel))).toBe(OcctErrorCode.Interrupted);
-                expect(before.length).toBeGreaterThan(0);
-                expect(handles).toBe(0);
+                expect(codeOf(() => c.run(kernel, inputs))).toBe(OcctErrorCode.Interrupted);
+                expect(kernel.shapeCount).toBe(handles);
             });
 
             it("finishes when the flag holds another token", () => {
-                const expected = c.run(kernel);
+                const inputs = c.setup(kernel);
+                const expected = c.run(kernel, inputs);
                 Atomics.store(kernel.interruptFlag()!, 0, 8);
                 kernel.setBreakToken(7);
-                expect(c.run(kernel)).toEqual(expected);
+                expect(c.run(kernel, inputs)).toEqual(expected);
             });
 
-            it("gives the same result as a new kernel after a stop, and leaves no handle", async () => {
+            it("gives the same result as a new kernel after a stop", async () => {
                 const fresh = await OcctKernel.init({ threads, memory64 });
                 let expected: number[];
                 try {
-                    expected = c.run(fresh);
+                    expected = c.run(fresh, c.setup(fresh));
                 } finally {
                     fresh[Symbol.dispose]();
                 }
 
                 const flag = kernel.interruptFlag()!;
-                // The inputs do not stop, because they use no algorithm that asks for a break.
-                const handles = kernel.shapeCount;
+                const inputs = c.setup(kernel);
                 Atomics.store(flag, 0, 9);
                 kernel.setBreakToken(9);
-                expect(codeOf(() => c.run(kernel))).toBe(OcctErrorCode.Interrupted);
+                expect(codeOf(() => c.run(kernel, inputs))).toBe(OcctErrorCode.Interrupted);
                 kernel.setBreakToken(0);
-                Atomics.store(flag, 0, 0);
-                kernel.releaseAll();
-                expect(kernel.shapeCount).toBe(handles);
-
-                expect(c.run(kernel)).toEqual(expected);
+                expect(c.run(kernel, inputs)).toEqual(expected);
             });
         });
     }
