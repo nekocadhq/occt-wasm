@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,537 +302,699 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === xcaf ===
 
 uint32_t OcctKernel::xcafNewDocument() {
+    BreakScope breakScope(*this);
     try {
-        Handle(TDocStd_Application) app = getXCAFApp();
-        Handle(TDocStd_Document) doc;
-        app->NewDocument("BinXCAF", doc);
-        uint32_t id = ++nextXcafId_; // pre-increment; default init may be 0 in WASM
-        xcafDocs_[id] = XCAFDocRecord{doc, {}, {}, 1};
-        return id;
+        auto result = [&]() -> uint32_t {
+            Handle(TDocStd_Application) app = getXCAFApp();
+            Handle(TDocStd_Document) doc;
+            app->NewDocument("BinXCAF", doc);
+            uint32_t id = ++nextXcafId_; // pre-increment; default init may be 0 in WASM
+            xcafDocs_[id] = XCAFDocRecord{doc, {}, {}, 1};
+            return id;
+        }();
+        breakScope.throwIfBroke("xcafNewDocument");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafNewDocument");
         throw std::runtime_error(std::string("xcafNewDocument: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafNewDocument");
+        throw;
     }
 }
 
 void OcctKernel::xcafClose(uint32_t docId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end()) {
-            throw std::runtime_error("xcafClose: invalid document ID");
-        }
-        try {
-            Handle(TDocStd_Application) app = getXCAFApp();
-            app->Close(it->second.doc);
-        } catch (...) {
-            // Close can fail if doc is already closed — ignore
-        }
-        xcafDocs_.erase(it);
+        [&]() -> void {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end()) {
+                throw std::runtime_error("xcafClose: invalid document ID");
+            }
+            try {
+                Handle(TDocStd_Application) app = getXCAFApp();
+                app->Close(it->second.doc);
+            } catch (...) {
+                // Close can fail if doc is already closed — ignore
+            }
+            xcafDocs_.erase(it);
+        }();
+        breakScope.throwIfBroke("xcafClose");
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafClose");
         throw std::runtime_error(std::string("xcafClose: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafClose");
+        throw;
     }
 }
 
 int OcctKernel::xcafAddShape(uint32_t docId, uint32_t shapeId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafAddShape: invalid document ID");
-        
-        Handle(XCAFDoc_ShapeTool) shapeTool =
-            XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
-        // makeAssembly=false: add the shape as a single part. With the default (true),
-        // a COMPOUND -- e.g. the single-solid compound a boolean cut/fuse returns -- is
-        // auto-decomposed into an assembly, so a color set on this (assembly) label is
-        // never emitted as a STYLED_ITEM for the underlying solid. Treating a root shape
-        // as one part keeps per-label colors attached to its geometry.
-        TDF_Label label = shapeTool->AddShape(get(shapeId), Standard_False);
-        
-        int facadeId = registerLabel(it->second, label);
-        return facadeId;
+        auto result = [&]() -> int {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafAddShape: invalid document ID");
+            
+            Handle(XCAFDoc_ShapeTool) shapeTool =
+                XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
+            // makeAssembly=false: add the shape as a single part. With the default (true),
+            // a COMPOUND -- e.g. the single-solid compound a boolean cut/fuse returns -- is
+            // auto-decomposed into an assembly, so a color set on this (assembly) label is
+            // never emitted as a STYLED_ITEM for the underlying solid. Treating a root shape
+            // as one part keeps per-label colors attached to its geometry.
+            TDF_Label label = shapeTool->AddShape(get(shapeId), Standard_False);
+            
+            int facadeId = registerLabel(it->second, label);
+            return facadeId;
+        }();
+        breakScope.throwIfBroke("xcafAddShape");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafAddShape");
         throw std::runtime_error(std::string("xcafAddShape: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafAddShape");
+        throw;
     }
 }
 
 int OcctKernel::xcafAddAssembly(uint32_t docId, uint32_t shapeId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafAddAssembly: invalid document ID");
-        
-        const TopoDS_Shape& shape = get(shapeId);
-        if (shape.ShapeType() != TopAbs_COMPOUND)
-            throw std::runtime_error("xcafAddAssembly: shape must be a compound");
-        
-        Handle(XCAFDoc_ShapeTool) shapeTool =
-            XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
-        TDF_Label label = shapeTool->AddShape(shape, Standard_True);
-        
-        int facadeId = registerLabel(it->second, label);
-        return facadeId;
+        auto result = [&]() -> int {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafAddAssembly: invalid document ID");
+            
+            const TopoDS_Shape& shape = get(shapeId);
+            if (shape.ShapeType() != TopAbs_COMPOUND)
+                throw std::runtime_error("xcafAddAssembly: shape must be a compound");
+            
+            Handle(XCAFDoc_ShapeTool) shapeTool =
+                XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
+            TDF_Label label = shapeTool->AddShape(shape, Standard_True);
+            
+            int facadeId = registerLabel(it->second, label);
+            return facadeId;
+        }();
+        breakScope.throwIfBroke("xcafAddAssembly");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafAddAssembly");
         throw std::runtime_error(std::string("xcafAddAssembly: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafAddAssembly");
+        throw;
     }
 }
 
 int OcctKernel::xcafAddComponent(uint32_t docId, int parentLabelId, uint32_t shapeId, double tx, double ty, double tz, double rx, double ry, double rz) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafAddComponent: invalid document ID");
-        
-        Handle(XCAFDoc_ShapeTool) shapeTool =
-            XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
-        
-        TDF_Label parentLabel = lookupLabel(it->second.labelRegistry, parentLabelId);
-        const TopoDS_Shape& child = get(shapeId);
-        if (shapeTool->IsReference(parentLabel))
-            throw std::runtime_error("xcafAddComponent: parent must be a part or an assembly, not a component");
-        
-        // XDE has no part that also has components: an assembly's shape is the
-        // compound of its components, so a part given children would lose its own
-        // geometry on export. Turn it into an assembly whose first component is the
-        // geometry it had, at identity, carrying the part's name and color. The
-        // registered shape keeps its facade ID; the new part label is the prototype
-        // behind that component.
-        if (!shapeTool->IsAssembly(parentLabel) && shapeTool->IsSimpleShape(parentLabel)) {
-            TopoDS_Shape own = shapeTool->GetShape(parentLabel);
-            bool empty = own.IsNull() || (own.ShapeType() == TopAbs_COMPOUND && own.NbChildren() == 0);
-            if (!empty) {
-                TDF_Label partLabel = shapeTool->NewShape();
-                shapeTool->SetShape(partLabel, own);
-                Handle(XCAFDoc_ColorTool) colorTool =
-                    XCAFDoc_DocumentTool::ColorTool(it->second.doc->Main());
-                const XCAFDoc_ColorType colorTypes[] = {XCAFDoc_ColorGen, XCAFDoc_ColorSurf,
-                                                        XCAFDoc_ColorCurv};
-                auto copyColors = [&](const TDF_Label& from, const TDF_Label& to) {
-                    Quantity_Color color;
-                    for (XCAFDoc_ColorType type : colorTypes) {
-                        if (colorTool->GetColor(from, type, color))
-                            colorTool->SetColor(to, color, type);
+        auto result = [&]() -> int {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafAddComponent: invalid document ID");
+            
+            Handle(XCAFDoc_ShapeTool) shapeTool =
+                XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
+            
+            TDF_Label parentLabel = lookupLabel(it->second.labelRegistry, parentLabelId);
+            const TopoDS_Shape& child = get(shapeId);
+            if (shapeTool->IsReference(parentLabel))
+                throw std::runtime_error("xcafAddComponent: parent must be a part or an assembly, not a component");
+            
+            // XDE has no part that also has components: an assembly's shape is the
+            // compound of its components, so a part given children would lose its own
+            // geometry on export. Turn it into an assembly whose first component is the
+            // geometry it had, at identity, carrying the part's name and color. The
+            // registered shape keeps its facade ID; the new part label is the prototype
+            // behind that component.
+            if (!shapeTool->IsAssembly(parentLabel) && shapeTool->IsSimpleShape(parentLabel)) {
+                TopoDS_Shape own = shapeTool->GetShape(parentLabel);
+                bool empty = own.IsNull() || (own.ShapeType() == TopAbs_COMPOUND && own.NbChildren() == 0);
+                if (!empty) {
+                    TDF_Label partLabel = shapeTool->NewShape();
+                    shapeTool->SetShape(partLabel, own);
+                    Handle(XCAFDoc_ColorTool) colorTool =
+                        XCAFDoc_DocumentTool::ColorTool(it->second.doc->Main());
+                    const XCAFDoc_ColorType colorTypes[] = {XCAFDoc_ColorGen, XCAFDoc_ColorSurf,
+                                                            XCAFDoc_ColorCurv};
+                    auto copyColors = [&](const TDF_Label& from, const TDF_Label& to) {
+                        Quantity_Color color;
+                        for (XCAFDoc_ColorType type : colorTypes) {
+                            if (colorTool->GetColor(from, type, color))
+                                colorTool->SetColor(to, color, type);
+                        }
+                    };
+                    copyColors(parentLabel, partLabel);
+                    // Sub-shape labels live under the part; re-register them under the new
+                    // prototype so their names, colors and facade tags follow the geometry.
+                    NCollection_Sequence<TDF_Label> subs;
+                    XCAFDoc_ShapeTool::GetSubShapes(parentLabel, subs);
+                    for (int i = 1; i <= subs.Length(); ++i) {
+                        TDF_Label oldSub = subs.Value(i);
+                        TopoDS_Shape subShape;
+                        TDF_Label newSub;
+                        if (!XCAFDoc_ShapeTool::GetShape(oldSub, subShape) ||
+                            !shapeTool->AddSubShape(partLabel, subShape, newSub) || newSub.IsNull())
+                            continue;
+                        Handle(TDataStd_Name) subName;
+                        if (oldSub.FindAttribute(TDataStd_Name::GetID(), subName))
+                            TDataStd_Name::Set(newSub, subName->Get());
+                        copyColors(oldSub, newSub);
+                        auto known = it->second.labelIds.find(oldSub);
+                        if (known != it->second.labelIds.end()) {
+                            int tagId = known->second;
+                            it->second.labelIds.erase(known);
+                            it->second.labelIds.emplace(newSub, tagId);
+                            it->second.labelRegistry[tagId] = newSub;
+                        }
+                        oldSub.ForgetAllAttributes();
                     }
-                };
-                copyColors(parentLabel, partLabel);
-                // Sub-shape labels live under the part; re-register them under the new
-                // prototype so their names, colors and facade tags follow the geometry.
-                NCollection_Sequence<TDF_Label> subs;
-                XCAFDoc_ShapeTool::GetSubShapes(parentLabel, subs);
-                for (int i = 1; i <= subs.Length(); ++i) {
-                    TDF_Label oldSub = subs.Value(i);
-                    TopoDS_Shape subShape;
-                    TDF_Label newSub;
-                    if (!XCAFDoc_ShapeTool::GetShape(oldSub, subShape) ||
-                        !shapeTool->AddSubShape(partLabel, subShape, newSub) || newSub.IsNull())
-                        continue;
-                    Handle(TDataStd_Name) subName;
-                    if (oldSub.FindAttribute(TDataStd_Name::GetID(), subName))
-                        TDataStd_Name::Set(newSub, subName->Get());
-                    copyColors(oldSub, newSub);
-                    auto known = it->second.labelIds.find(oldSub);
-                    if (known != it->second.labelIds.end()) {
-                        int tagId = known->second;
-                        it->second.labelIds.erase(known);
-                        it->second.labelIds.emplace(newSub, tagId);
-                        it->second.labelRegistry[tagId] = newSub;
+                    TDF_Label ownComp = shapeTool->AddComponent(parentLabel, partLabel, TopLoc_Location());
+                    Handle(TDataStd_Name) nameAttr;
+                    if (parentLabel.FindAttribute(TDataStd_Name::GetID(), nameAttr)) {
+                        TDataStd_Name::Set(partLabel, nameAttr->Get());
+                        TDataStd_Name::Set(ownComp, nameAttr->Get());
                     }
-                    oldSub.ForgetAllAttributes();
-                }
-                TDF_Label ownComp = shapeTool->AddComponent(parentLabel, partLabel, TopLoc_Location());
-                Handle(TDataStd_Name) nameAttr;
-                if (parentLabel.FindAttribute(TDataStd_Name::GetID(), nameAttr)) {
-                    TDataStd_Name::Set(partLabel, nameAttr->Get());
-                    TDataStd_Name::Set(ownComp, nameAttr->Get());
                 }
             }
-        }
-        
-        // Build location transform (Euler angles in radians)
-        gp_Trsf trsf;
-        if (std::abs(rx) > 1e-12 || std::abs(ry) > 1e-12 || std::abs(rz) > 1e-12) {
-            gp_Trsf rotX, rotY, rotZ;
-            rotX.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), rx);
-            rotY.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0)), ry);
-            rotZ.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), rz);
-            trsf = rotZ * rotY * rotX;
-        }
-        trsf.SetTranslationPart(gp_Vec(tx, ty, tz));
-        TopLoc_Location loc(trsf);
-        
-        // First add the shape as a standalone label, then add as component with location
-        TDF_Label shapeLabel = shapeTool->AddShape(child);
-        TDF_Label compLabel = shapeTool->AddComponent(parentLabel, shapeLabel, loc);
-        if (compLabel.IsNull())
-            throw std::runtime_error("xcafAddComponent: parent must be a part or an assembly, not a component");
-        shapeTool->UpdateAssemblies();
-        
-        int facadeId = registerLabel(it->second, compLabel);
-        return facadeId;
+            
+            // Build location transform (Euler angles in radians)
+            gp_Trsf trsf;
+            if (std::abs(rx) > 1e-12 || std::abs(ry) > 1e-12 || std::abs(rz) > 1e-12) {
+                gp_Trsf rotX, rotY, rotZ;
+                rotX.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), rx);
+                rotY.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0)), ry);
+                rotZ.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), rz);
+                trsf = rotZ * rotY * rotX;
+            }
+            trsf.SetTranslationPart(gp_Vec(tx, ty, tz));
+            TopLoc_Location loc(trsf);
+            
+            // First add the shape as a standalone label, then add as component with location
+            TDF_Label shapeLabel = shapeTool->AddShape(child);
+            TDF_Label compLabel = shapeTool->AddComponent(parentLabel, shapeLabel, loc);
+            if (compLabel.IsNull())
+                throw std::runtime_error("xcafAddComponent: parent must be a part or an assembly, not a component");
+            shapeTool->UpdateAssemblies();
+            
+            int facadeId = registerLabel(it->second, compLabel);
+            return facadeId;
+        }();
+        breakScope.throwIfBroke("xcafAddComponent");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafAddComponent");
         throw std::runtime_error(std::string("xcafAddComponent: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafAddComponent");
+        throw;
     }
 }
 
 void OcctKernel::xcafSetColor(uint32_t docId, int labelId, double r, double g, double b) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafSetColor: invalid document ID");
-        
-        Handle(XCAFDoc_ColorTool) colorTool =
-            XCAFDoc_DocumentTool::ColorTool(it->second.doc->Main());
-        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
-        
-        Quantity_Color color(r, g, b, Quantity_TOC_RGB);
-        colorTool->SetColor(label, color, XCAFDoc_ColorGen);
+        [&]() -> void {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafSetColor: invalid document ID");
+            
+            Handle(XCAFDoc_ColorTool) colorTool =
+                XCAFDoc_DocumentTool::ColorTool(it->second.doc->Main());
+            TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+            
+            Quantity_Color color(r, g, b, Quantity_TOC_RGB);
+            colorTool->SetColor(label, color, XCAFDoc_ColorGen);
+        }();
+        breakScope.throwIfBroke("xcafSetColor");
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafSetColor");
         throw std::runtime_error(std::string("xcafSetColor: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafSetColor");
+        throw;
     }
 }
 
 void OcctKernel::xcafSetName(uint32_t docId, int labelId, const std::string& name) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafSetName: invalid document ID");
-        
-        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
-        TDataStd_Name::Set(label, TCollection_ExtendedString(name.c_str()));
+        [&]() -> void {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafSetName: invalid document ID");
+            
+            TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+            TDataStd_Name::Set(label, TCollection_ExtendedString(name.c_str()));
+        }();
+        breakScope.throwIfBroke("xcafSetName");
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafSetName");
         throw std::runtime_error(std::string("xcafSetName: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafSetName");
+        throw;
     }
 }
 
 XCAFLabelInfo OcctKernel::xcafGetLabelInfo(uint32_t docId, int labelId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafGetLabelInfo: invalid document ID");
-        
-        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
-        
-        XCAFLabelInfo info;
-        info.labelId = labelId;
-        
-        Handle(XCAFDoc_ShapeTool) shapeTool =
-            XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
-        Handle(XCAFDoc_ColorTool) colorTool =
-            XCAFDoc_DocumentTool::ColorTool(it->second.doc->Main());
-        
-        // Name
-        Handle(TDataStd_Name) nameAttr;
-        if (label.FindAttribute(TDataStd_Name::GetID(), nameAttr)) {
-            TCollection_ExtendedString ext = nameAttr->Get();
-            info.name = TCollection_AsciiString(ext).ToCString();
-        }
-        
-        // Color: a STEP reader stores the style of the surfaces, and a document built here stores a generic color.
-        Quantity_Color color;
-        if (colorTool->GetColor(label, XCAFDoc_ColorSurf, color)
-            || colorTool->GetColor(label, XCAFDoc_ColorGen, color)) {
-            info.hasColor = true;
-            info.r = color.Red();
-            info.g = color.Green();
-            info.b = color.Blue();
-        }
-        
-        // Assembly/component flags
-        info.isAssembly = shapeTool->IsAssembly(label);
-        info.isComponent = shapeTool->IsComponent(label);
-        
-        // Shape
-        TopoDS_Shape shape;
-        if (shapeTool->GetShape(label, shape) && !shape.IsNull()) {
-            info.shapeId = store(shape);
-        }
-        
-        return info;
+        auto result = [&]() -> XCAFLabelInfo {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafGetLabelInfo: invalid document ID");
+            
+            TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+            
+            XCAFLabelInfo info;
+            info.labelId = labelId;
+            
+            Handle(XCAFDoc_ShapeTool) shapeTool =
+                XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
+            Handle(XCAFDoc_ColorTool) colorTool =
+                XCAFDoc_DocumentTool::ColorTool(it->second.doc->Main());
+            
+            // Name
+            Handle(TDataStd_Name) nameAttr;
+            if (label.FindAttribute(TDataStd_Name::GetID(), nameAttr)) {
+                TCollection_ExtendedString ext = nameAttr->Get();
+                info.name = TCollection_AsciiString(ext).ToCString();
+            }
+            
+            // Color: a STEP reader stores the style of the surfaces, and a document built here stores a generic color.
+            Quantity_Color color;
+            if (colorTool->GetColor(label, XCAFDoc_ColorSurf, color)
+                || colorTool->GetColor(label, XCAFDoc_ColorGen, color)) {
+                info.hasColor = true;
+                info.r = color.Red();
+                info.g = color.Green();
+                info.b = color.Blue();
+            }
+            
+            // Assembly/component flags
+            info.isAssembly = shapeTool->IsAssembly(label);
+            info.isComponent = shapeTool->IsComponent(label);
+            
+            // Shape
+            TopoDS_Shape shape;
+            if (shapeTool->GetShape(label, shape) && !shape.IsNull()) {
+                info.shapeId = store(shape);
+            }
+            
+            return info;
+        }();
+        breakScope.throwIfBroke("xcafGetLabelInfo");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafGetLabelInfo");
         throw std::runtime_error(std::string("xcafGetLabelInfo: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafGetLabelInfo");
+        throw;
     }
 }
 
 std::vector<int> OcctKernel::xcafGetChildLabels(uint32_t docId, int parentLabelId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafGetChildLabels: invalid document ID");
-        
-        Handle(XCAFDoc_ShapeTool) shapeTool =
-            XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
-        TDF_Label parentLabel = lookupLabel(it->second.labelRegistry, parentLabelId);
-        
-        NCollection_Sequence<TDF_Label> children;
-        shapeTool->GetComponents(parentLabel, children);
-        
-        std::vector<int> ids;
-        for (int i = 1; i <= children.Length(); ++i) {
-            int facadeId = registerLabel(it->second, children.Value(i));
-            ids.push_back(facadeId);
-        }
-        return ids;
+        auto result = [&]() -> std::vector<int> {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafGetChildLabels: invalid document ID");
+            
+            Handle(XCAFDoc_ShapeTool) shapeTool =
+                XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
+            TDF_Label parentLabel = lookupLabel(it->second.labelRegistry, parentLabelId);
+            
+            NCollection_Sequence<TDF_Label> children;
+            shapeTool->GetComponents(parentLabel, children);
+            
+            std::vector<int> ids;
+            for (int i = 1; i <= children.Length(); ++i) {
+                int facadeId = registerLabel(it->second, children.Value(i));
+                ids.push_back(facadeId);
+            }
+            return ids;
+        }();
+        breakScope.throwIfBroke("xcafGetChildLabels");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafGetChildLabels");
         throw std::runtime_error(std::string("xcafGetChildLabels: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafGetChildLabels");
+        throw;
     }
 }
 
 std::vector<int> OcctKernel::xcafGetRootLabels(uint32_t docId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafGetRootLabels: invalid document ID");
-        
-        Handle(XCAFDoc_ShapeTool) shapeTool =
-            XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
-        
-        NCollection_Sequence<TDF_Label> roots;
-        shapeTool->GetFreeShapes(roots);
-        
-        std::vector<int> ids;
-        for (int i = 1; i <= roots.Length(); ++i) {
-            int facadeId = registerLabel(it->second, roots.Value(i));
-            ids.push_back(facadeId);
-        }
-        return ids;
+        auto result = [&]() -> std::vector<int> {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafGetRootLabels: invalid document ID");
+            
+            Handle(XCAFDoc_ShapeTool) shapeTool =
+                XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
+            
+            NCollection_Sequence<TDF_Label> roots;
+            shapeTool->GetFreeShapes(roots);
+            
+            std::vector<int> ids;
+            for (int i = 1; i <= roots.Length(); ++i) {
+                int facadeId = registerLabel(it->second, roots.Value(i));
+                ids.push_back(facadeId);
+            }
+            return ids;
+        }();
+        breakScope.throwIfBroke("xcafGetRootLabels");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafGetRootLabels");
         throw std::runtime_error(std::string("xcafGetRootLabels: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafGetRootLabels");
+        throw;
     }
 }
 
 int OcctKernel::xcafGetReferredLabel(uint32_t docId, int labelId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafGetReferredLabel: invalid document ID");
-        
-        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
-        
-        TDF_Label referred;
-        if (!XCAFDoc_ShapeTool::GetReferredShape(label, referred) || referred.IsNull())
-            return 0;
-        
-        int facadeId = registerLabel(it->second, referred);
-        return facadeId;
+        auto result = [&]() -> int {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafGetReferredLabel: invalid document ID");
+            
+            TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+            
+            TDF_Label referred;
+            if (!XCAFDoc_ShapeTool::GetReferredShape(label, referred) || referred.IsNull())
+                return 0;
+            
+            int facadeId = registerLabel(it->second, referred);
+            return facadeId;
+        }();
+        breakScope.throwIfBroke("xcafGetReferredLabel");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafGetReferredLabel");
         throw std::runtime_error(std::string("xcafGetReferredLabel: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafGetReferredLabel");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::xcafGetLabelLocation(uint32_t docId, int labelId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafGetLabelLocation: invalid document ID");
-        
-        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
-        
-        const gp_Trsf& trsf = XCAFDoc_ShapeTool::GetLocation(label).Transformation();
-        std::vector<double> matrix(12);
-        for (int row = 1; row <= 3; ++row) {
-            for (int col = 1; col <= 4; ++col) {
-                matrix[static_cast<size_t>((row - 1) * 4 + (col - 1))] = trsf.Value(row, col);
+        auto result = [&]() -> std::vector<double> {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafGetLabelLocation: invalid document ID");
+            
+            TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+            
+            const gp_Trsf& trsf = XCAFDoc_ShapeTool::GetLocation(label).Transformation();
+            std::vector<double> matrix(12);
+            for (int row = 1; row <= 3; ++row) {
+                for (int col = 1; col <= 4; ++col) {
+                    matrix[static_cast<size_t>((row - 1) * 4 + (col - 1))] = trsf.Value(row, col);
+                }
             }
-        }
-        return matrix;
+            return matrix;
+        }();
+        breakScope.throwIfBroke("xcafGetLabelLocation");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafGetLabelLocation");
         throw std::runtime_error(std::string("xcafGetLabelLocation: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafGetLabelLocation");
+        throw;
     }
 }
 
 std::vector<int> OcctKernel::xcafGetSubShapeLabels(uint32_t docId, int labelId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafGetSubShapeLabels: invalid document ID");
-        
-        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
-        
-        NCollection_Sequence<TDF_Label> subs;
-        XCAFDoc_ShapeTool::GetSubShapes(label, subs);
-        
-        std::vector<int> ids;
-        for (int i = 1; i <= subs.Length(); ++i) {
-            int facadeId = registerLabel(it->second, subs.Value(i));
-            ids.push_back(facadeId);
-        }
-        return ids;
+        auto result = [&]() -> std::vector<int> {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafGetSubShapeLabels: invalid document ID");
+            
+            TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+            
+            NCollection_Sequence<TDF_Label> subs;
+            XCAFDoc_ShapeTool::GetSubShapes(label, subs);
+            
+            std::vector<int> ids;
+            for (int i = 1; i <= subs.Length(); ++i) {
+                int facadeId = registerLabel(it->second, subs.Value(i));
+                ids.push_back(facadeId);
+            }
+            return ids;
+        }();
+        breakScope.throwIfBroke("xcafGetSubShapeLabels");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafGetSubShapeLabels");
         throw std::runtime_error(std::string("xcafGetSubShapeLabels: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafGetSubShapeLabels");
+        throw;
     }
 }
 
 int OcctKernel::xcafAddSubShape(uint32_t docId, int labelId, uint32_t shapeId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafAddSubShape: invalid document ID");
-        
-        TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
-        
-        Handle(XCAFDoc_ShapeTool) shapeTool =
-            XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
-        
-        TDF_Label subLabel;
-        if (!shapeTool->AddSubShape(label, get(shapeId), subLabel) || subLabel.IsNull()) {
-            throw std::runtime_error(
-                "xcafAddSubShape: label must be a top-level part and the shape one of its sub-shapes");
-        }
-        
-        int facadeId = registerLabel(it->second, subLabel);
-        return facadeId;
+        auto result = [&]() -> int {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafAddSubShape: invalid document ID");
+            
+            TDF_Label label = lookupLabel(it->second.labelRegistry, labelId);
+            
+            Handle(XCAFDoc_ShapeTool) shapeTool =
+                XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
+            
+            TDF_Label subLabel;
+            if (!shapeTool->AddSubShape(label, get(shapeId), subLabel) || subLabel.IsNull()) {
+                throw std::runtime_error(
+                    "xcafAddSubShape: label must be a top-level part and the shape one of its sub-shapes");
+            }
+            
+            int facadeId = registerLabel(it->second, subLabel);
+            return facadeId;
+        }();
+        breakScope.throwIfBroke("xcafAddSubShape");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafAddSubShape");
         throw std::runtime_error(std::string("xcafAddSubShape: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafAddSubShape");
+        throw;
     }
 }
 
 std::string OcctKernel::xcafExportSTEP(uint32_t docId) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafExportSTEP: invalid document ID");
-        
-        STEPCAFControl_Writer writer;
-        writer.SetColorMode(Standard_True);
-        writer.SetNameMode(Standard_True);
-        // STEPCAFControl_Writer does not seed the write actor's shape-processing flags,
-        // so non-conformant elementary surfaces (notably cones, whose stored
-        // ConicalSurface carries a negative semi-angle) are never fixed and their
-        // lateral faces are dropped from the output. Enable DirectFaces explicitly to
-        // match the plain exportStep path. (This also re-seeds the shared controller
-        // actor, leaving subsequent exportStep calls in a healthy state.)
-        ShapeProcess::OperationsFlags spFlags;
-        spFlags.set(ShapeProcess::Operation::DirectFaces);
-        spFlags.set(ShapeProcess::Operation::SplitCommonVertex);
-        writer.SetShapeProcessFlags(spFlags);
-        
-        if (!writer.Transfer(it->second.doc, STEPControl_AsIs)) {
-            throw std::runtime_error("xcafExportSTEP: transfer failed");
-        }
-        
-        std::string tmpPath = "/tmp/xcaf_export.step";
-        if (writer.Write(tmpPath.c_str()) != IFSelect_RetDone) {
-            throw std::runtime_error("xcafExportSTEP: write failed");
-        }
-        
-        std::ifstream ifs(tmpPath);
-        std::string content((std::istreambuf_iterator<char>(ifs)),
-                            std::istreambuf_iterator<char>());
-        std::remove(tmpPath.c_str());
-        return content;
+        auto result = [&]() -> std::string {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafExportSTEP: invalid document ID");
+            
+            STEPCAFControl_Writer writer;
+            writer.SetColorMode(Standard_True);
+            writer.SetNameMode(Standard_True);
+            // STEPCAFControl_Writer does not seed the write actor's shape-processing flags,
+            // so non-conformant elementary surfaces (notably cones, whose stored
+            // ConicalSurface carries a negative semi-angle) are never fixed and their
+            // lateral faces are dropped from the output. Enable DirectFaces explicitly to
+            // match the plain exportStep path. (This also re-seeds the shared controller
+            // actor, leaving subsequent exportStep calls in a healthy state.)
+            ShapeProcess::OperationsFlags spFlags;
+            spFlags.set(ShapeProcess::Operation::DirectFaces);
+            spFlags.set(ShapeProcess::Operation::SplitCommonVertex);
+            writer.SetShapeProcessFlags(spFlags);
+            
+            if (!writer.Transfer(it->second.doc, STEPControl_AsIs)) {
+                throw std::runtime_error("xcafExportSTEP: transfer failed");
+            }
+            
+            std::string tmpPath = "/tmp/xcaf_export.step";
+            if (writer.Write(tmpPath.c_str()) != IFSelect_RetDone) {
+                throw std::runtime_error("xcafExportSTEP: write failed");
+            }
+            
+            std::ifstream ifs(tmpPath);
+            std::string content((std::istreambuf_iterator<char>(ifs)),
+                                std::istreambuf_iterator<char>());
+            std::remove(tmpPath.c_str());
+            return content;
+        }();
+        breakScope.throwIfBroke("xcafExportSTEP");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafExportSTEP");
         throw std::runtime_error(std::string("xcafExportSTEP: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafExportSTEP");
+        throw;
     }
 }
 
 uint32_t OcctKernel::xcafImportSTEP(const std::string& stepData) {
+    BreakScope breakScope(*this);
     try {
-        std::string tmpPath = "/tmp/xcaf_import.step";
-        {
-            std::ofstream ofs(tmpPath);
-            ofs << stepData;
-        }
-        
-        Handle(TDocStd_Application) app = getXCAFApp();
-        Handle(TDocStd_Document) doc;
-        app->NewDocument("BinXCAF", doc);
-        
-        STEPCAFControl_Reader reader;
-        reader.SetColorMode(Standard_True);
-        reader.SetNameMode(Standard_True);
-        reader.SetLayerMode(Standard_True);
-        
-        if (reader.ReadFile(tmpPath.c_str()) != IFSelect_RetDone) {
+        auto result = [&]() -> uint32_t {
+            std::string tmpPath = "/tmp/xcaf_import.step";
+            {
+                std::ofstream ofs(tmpPath);
+                ofs << stepData;
+            }
+            
+            Handle(TDocStd_Application) app = getXCAFApp();
+            Handle(TDocStd_Document) doc;
+            app->NewDocument("BinXCAF", doc);
+            
+            STEPCAFControl_Reader reader;
+            reader.SetColorMode(Standard_True);
+            reader.SetNameMode(Standard_True);
+            reader.SetLayerMode(Standard_True);
+            
+            if (reader.ReadFile(tmpPath.c_str()) != IFSelect_RetDone) {
+                std::remove(tmpPath.c_str());
+                getXCAFApp()->Close(doc);
+                throw std::runtime_error("xcafImportSTEP: read failed");
+            }
             std::remove(tmpPath.c_str());
-            getXCAFApp()->Close(doc);
-            throw std::runtime_error("xcafImportSTEP: read failed");
-        }
-        std::remove(tmpPath.c_str());
-        
-        if (!reader.Transfer(doc)) {
-            getXCAFApp()->Close(doc);
-            throw std::runtime_error("xcafImportSTEP: transfer failed");
-        }
-        
-        uint32_t id = ++nextXcafId_;
-        xcafDocs_[id] = XCAFDocRecord{doc, {}, {}, 1};
-        return id;
+            
+            if (!reader.Transfer(doc, breakRange())) {
+                getXCAFApp()->Close(doc);
+                throw std::runtime_error("xcafImportSTEP: transfer failed");
+            }
+            
+            uint32_t id = ++nextXcafId_;
+            xcafDocs_[id] = XCAFDocRecord{doc, {}, {}, 1};
+            return id;
+        }();
+        breakScope.throwIfBroke("xcafImportSTEP");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafImportSTEP");
         throw std::runtime_error(std::string("xcafImportSTEP: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafImportSTEP");
+        throw;
     }
 }
 
 std::string OcctKernel::xcafExportIGES(uint32_t docId, const std::string& unit) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafExportIGES: invalid document ID");
-        if (unit != "MM" && unit != "IN")
-            throw std::runtime_error("xcafExportIGES: the unit must be MM or IN");
-        
-        // The writer takes its unit and its mode from the static parameters. Mode 0 writes trimmed
-        // surfaces, which most CAM programs read.
-        IGESControl_Controller::Init();
-        // The enum of write.iges.unit names the inch INCH
-        const char* unitName = unit == "IN" ? "INCH" : "MM";
-        if (!Interface_Static::SetCVal("write.iges.unit", unitName) ||
-            !Interface_Static::SetIVal("write.iges.brep.mode", 0))
-            throw std::runtime_error("xcafExportIGES: cannot set the unit and the mode");
-        IGESCAFControl_Writer writer;
-        IGESData_GlobalSection header = writer.Model()->GlobalSection();
-        header.SetSendName(new TCollection_HAsciiString("NekoCAD"));
-        writer.Model()->SetGlobalSection(header);
-        
-        if (!writer.Transfer(it->second.doc)) {
-            throw std::runtime_error("xcafExportIGES: transfer failed");
-        }
-        
-        // Return file path — JS reads the file via Module.FS.readFile()
-        std::string tmpPath = "/tmp/xcaf_export.igs";
-        if (!writer.Write(tmpPath.c_str())) {
-            throw std::runtime_error("xcafExportIGES: write failed");
-        }
-        return tmpPath;
+        auto result = [&]() -> std::string {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafExportIGES: invalid document ID");
+            if (unit != "MM" && unit != "IN")
+                throw std::runtime_error("xcafExportIGES: the unit must be MM or IN");
+            
+            // The writer takes its unit and its mode from the static parameters. Mode 0 writes trimmed
+            // surfaces, which most CAM programs read.
+            IGESControl_Controller::Init();
+            // The enum of write.iges.unit names the inch INCH
+            const char* unitName = unit == "IN" ? "INCH" : "MM";
+            if (!Interface_Static::SetCVal("write.iges.unit", unitName) ||
+                !Interface_Static::SetIVal("write.iges.brep.mode", 0))
+                throw std::runtime_error("xcafExportIGES: cannot set the unit and the mode");
+            IGESCAFControl_Writer writer;
+            IGESData_GlobalSection header = writer.Model()->GlobalSection();
+            header.SetSendName(new TCollection_HAsciiString("NekoCAD"));
+            writer.Model()->SetGlobalSection(header);
+            
+            if (!writer.Transfer(it->second.doc)) {
+                throw std::runtime_error("xcafExportIGES: transfer failed");
+            }
+            
+            // Return file path — JS reads the file via Module.FS.readFile()
+            std::string tmpPath = "/tmp/xcaf_export.igs";
+            if (!writer.Write(tmpPath.c_str())) {
+                throw std::runtime_error("xcafExportIGES: write failed");
+            }
+            return tmpPath;
+        }();
+        breakScope.throwIfBroke("xcafExportIGES");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafExportIGES");
         throw std::runtime_error(std::string("xcafExportIGES: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafExportIGES");
+        throw;
     }
 }
 
 std::string OcctKernel::xcafExportGLTF(uint32_t docId, double linDeflection, double angDeflection) {
+    BreakScope breakScope(*this);
     try {
-        auto it = xcafDocs_.find(docId);
-        if (it == xcafDocs_.end())
-            throw std::runtime_error("xcafExportGLTF: invalid document ID");
-        
-        // Tessellate all shapes in the document
-        Handle(XCAFDoc_ShapeTool) shapeTool =
-            XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
-        NCollection_Sequence<TDF_Label> labels;
-        shapeTool->GetFreeShapes(labels);
-        for (int i = 1; i <= labels.Length(); ++i) {
-            TopoDS_Shape shape;
-            if (shapeTool->GetShape(labels.Value(i), shape)) {
-                BRepMesh_IncrementalMesh mesh(shape, linDeflection, Standard_False, angDeflection,
-                                              Standard_True);
+        auto result = [&]() -> std::string {
+            auto it = xcafDocs_.find(docId);
+            if (it == xcafDocs_.end())
+                throw std::runtime_error("xcafExportGLTF: invalid document ID");
+            
+            // Tessellate all shapes in the document
+            Handle(XCAFDoc_ShapeTool) shapeTool =
+                XCAFDoc_DocumentTool::ShapeTool(it->second.doc->Main());
+            NCollection_Sequence<TDF_Label> labels;
+            shapeTool->GetFreeShapes(labels);
+            for (int i = 1; i <= labels.Length(); ++i) {
+                TopoDS_Shape shape;
+                if (shapeTool->GetShape(labels.Value(i), shape)) {
+                    IMeshTools_Parameters meshParams;
+                    meshParams.Deflection = linDeflection;
+                    meshParams.Angle = angDeflection;
+                    meshParams.InParallel = Standard_True;
+                    BRepMesh_IncrementalMesh mesh(shape, meshParams, breakRange());
+                }
             }
-        }
-        
-        // Write glTF binary (.glb) via Handle-allocated writer
-        std::string tmpPath = "/tmp/xcaf_export.glb";
-        NCollection_IndexedDataMap<TCollection_AsciiString, TCollection_AsciiString> fileInfo;
-        
-        Handle(RWGltf_CafWriter) writer =
-            new RWGltf_CafWriter(TCollection_AsciiString(tmpPath.c_str()), Standard_True);
-        writer->SetTransformationFormat(RWGltf_WriterTrsfFormat_Compact);
-        // glTF is in meters with Y up. A document with no length unit is in millimeters with Z up, so the
-        // writer converts both. A document with a length unit of its own keeps it, because Perform reads it.
-        writer->ChangeCoordinateSystemConverter().SetInputLengthUnit(0.001);
-        writer->ChangeCoordinateSystemConverter().SetInputCoordinateSystem(RWMesh_CoordinateSystem_Zup);
-        if (!writer->Perform(it->second.doc, fileInfo, Message_ProgressRange())) {
-            throw std::runtime_error("xcafExportGLTF: write failed");
-        }
-        
-        // Return file path — JS reads binary via Module.FS.readFile()
-        return tmpPath;
+            
+            // Write glTF binary (.glb) via Handle-allocated writer
+            std::string tmpPath = "/tmp/xcaf_export.glb";
+            NCollection_IndexedDataMap<TCollection_AsciiString, TCollection_AsciiString> fileInfo;
+            
+            Handle(RWGltf_CafWriter) writer =
+                new RWGltf_CafWriter(TCollection_AsciiString(tmpPath.c_str()), Standard_True);
+            writer->SetTransformationFormat(RWGltf_WriterTrsfFormat_Compact);
+            // glTF is in meters with Y up. A document with no length unit is in millimeters with Z up, so the
+            // writer converts both. A document with a length unit of its own keeps it, because Perform reads it.
+            writer->ChangeCoordinateSystemConverter().SetInputLengthUnit(0.001);
+            writer->ChangeCoordinateSystemConverter().SetInputCoordinateSystem(RWMesh_CoordinateSystem_Zup);
+            if (!writer->Perform(it->second.doc, fileInfo, Message_ProgressRange())) {
+                throw std::runtime_error("xcafExportGLTF: write failed");
+            }
+            
+            // Return file path — JS reads binary via Module.FS.readFile()
+            return tmpPath;
+        }();
+        breakScope.throwIfBroke("xcafExportGLTF");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("xcafExportGLTF");
         throw std::runtime_error(std::string("xcafExportGLTF: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("xcafExportGLTF");
+        throw;
     }
 }

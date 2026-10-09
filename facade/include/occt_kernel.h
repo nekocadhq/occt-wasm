@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -8,8 +9,12 @@
 #include <vector>
 
 #include <initializer_list>
+#include <iterator>
+#include <stdexcept>
 
 #include <BRepTools_History.hxx>
+#include <Message_ProgressIndicator.hxx>
+#include <Message_ProgressRange.hxx>
 #include <NCollection_IndexedMap.hxx>
 #include <Standard_Failure.hxx>
 #include <TDF_Label.hxx>
@@ -33,9 +38,10 @@ bool meshInParallel(const TopoDS_Shape& shape);
 
 /// Meshes a shape. With `force`, it first removes the triangulation that the shape holds,
 /// which the mesher otherwise keeps when it is finer or has a different angle. Hold a
-/// MeshSnapshot of the shape to put that triangulation back.
+/// MeshSnapshot of the shape to put that triangulation back. Give it the breakRange() of the
+/// kernel, so that a stop of the call also stops the mesher.
 void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angularDeflection,
-                 bool relative, bool force);
+                 bool relative, bool force, const Message_ProgressRange& range);
 
 /// Holds the triangulations of the faces and the polygons of the edges of a shape, and
 /// puts them back on destruction. A forced mesh then leaves the shape as it was.
@@ -188,6 +194,35 @@ struct XCAFLabelInfo {
     uint32_t shapeId = 0;
 };
 
+/// Stops an OCCT algorithm from another thread. The algorithm asks UserBreak() at its own
+/// checks, and leaves through its normal error path when the answer is true.
+///
+/// The client writes the token of the call to stop into `flag`, in the shared heap of a
+/// threaded build, while this thread is busy in the call. UserBreak() is true only when
+/// `token` is not 0 and `flag` holds it, so a stop that arrives late does not stop the next
+/// call. Each pthread of OCCT reads the same heap, so a parallel algorithm sees the flag too.
+class BreakIndicator : public Message_ProgressIndicator {
+  public:
+    Standard_Boolean UserBreak() override {
+        const int32_t current = token.load(std::memory_order_relaxed);
+        if (current == 0 || flag.load(std::memory_order_relaxed) != current)
+            return Standard_False;
+        breaks.fetch_add(1, std::memory_order_relaxed);
+        return Standard_True;
+    }
+
+    void Show(const Message_ProgressScope&, const Standard_Boolean) override {}
+
+    /// The token of the call to stop. The client writes it, and 0 stops nothing.
+    std::atomic<int32_t> flag{0};
+    /// The token of the call that runs now. 0 means that no call can stop.
+    std::atomic<int32_t> token{0};
+    /// How many times UserBreak() answered true, so a facade method knows that it stopped.
+    std::atomic<uint32_t> breaks{0};
+
+    DEFINE_STANDARD_RTTI_INLINE(BreakIndicator, Message_ProgressIndicator)
+};
+
 /// Arena-based OCCT kernel — full brepjs KernelAdapter coverage.
 class OcctKernel {
   public:
@@ -198,6 +233,13 @@ class OcctKernel {
     void release(uint32_t id);
     void releaseAll();
     uint32_t getShapeCount();
+
+    // --- A stop from another thread (NekoCAD) ---
+    /// Lets the calls that follow stop when the interrupt flag holds `token`. 0 stops nothing.
+    void setBreakToken(int token);
+    /// The address of the interrupt flag, an int32 in the heap. The client writes a token into
+    /// it with Atomics.store while a call runs.
+    double interruptFlagAddress();
 
     // --- The history of a step (NekoCAD) ---
     void historyBegin();
@@ -551,6 +593,39 @@ class OcctKernel {
     std::vector<int> vectorI32FromHeap(double ptr, int count);
 
   private:
+    /// Watches one facade method for a user break. The generated code makes one at the start of
+    /// each method, and calls throwIfBroke() in each catch and before the method returns.
+    class BreakScope {
+      public:
+        explicit BreakScope(OcctKernel& kernel)
+            : kernel_(kernel),
+              breaks_(kernel.breaker_->breaks.load(std::memory_order_relaxed)),
+              mark_(kernel.nextId_) {}
+
+        /// When an algorithm of this method stopped, releases each shape that the method stored
+        /// and throws "<name>: interrupted". A stopped algorithm can give a part of its result
+        /// with no error, thus the method must not return it.
+        void throwIfBroke(const char* name) {
+            if (kernel_.breaker_->breaks.load(std::memory_order_relaxed) == breaks_)
+                return;
+            for (auto it = kernel_.arena_.begin(); it != kernel_.arena_.end();) {
+                it = it->first >= mark_ ? kernel_.arena_.erase(it) : std::next(it);
+            }
+            throw std::runtime_error(std::string(name) + ": interrupted");
+        }
+
+      private:
+        OcctKernel& kernel_;
+        uint32_t breaks_;
+        uint32_t mark_;
+    };
+
+    /// A progress range that stops when the interrupt flag holds the break token. Give it to
+    /// each OCCT algorithm that asks UserBreak. config::validate checks the specs for it.
+    Message_ProgressRange breakRange() { return breaker_->Start(); }
+
+    Handle(BreakIndicator) breaker_ = new BreakIndicator();
+
     uint32_t store(const TopoDS_Shape& shape);
     const TopoDS_Shape& get(uint32_t id) const;
     TopoDS_Shape normalizeSolidOrientation(const TopoDS_Shape& shape);

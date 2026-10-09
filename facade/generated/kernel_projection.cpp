@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,87 +302,107 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === projection ===
 
 ProjectionData OcctKernel::projectEdges(uint32_t shapeId, double ox, double oy, double oz, double dx, double dy, double dz, double xx, double xy, double xz, bool hasXAxis) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(shapeId);
-        
-        Handle(HLRBRep_Algo) hlr = new HLRBRep_Algo();
-        hlr->Add(shape, 0);
-        
-        gp_Pnt origin(ox, oy, oz);
-        gp_Dir dir(dx, dy, dz);
-        
-        gp_Ax2 ax2 = hasXAxis ? gp_Ax2(origin, dir, gp_Dir(xx, xy, xz)) : gp_Ax2(origin, dir);
-        
-        HLRAlgo_Projector projector(ax2);
-        hlr->Projector(projector);
-        hlr->Update();
-        hlr->Hide();
-        
-        HLRBRep_HLRToShape hlrShapes(hlr);
-        
-        ProjectionData result{};
-        
-        auto storeIfNotNull = [this](const TopoDS_Shape& s) -> uint32_t {
-            if (s.IsNull())
-                return 0;
-            BRepLib::BuildCurves3d(s);
-            return store(s);
-        };
-        
-        result.visibleOutline = storeIfNotNull(hlrShapes.OutLineVCompound());
-        result.visibleSmooth = storeIfNotNull(hlrShapes.Rg1LineVCompound());
-        result.visibleSharp = storeIfNotNull(hlrShapes.VCompound());
-        result.hiddenOutline = storeIfNotNull(hlrShapes.OutLineHCompound());
-        result.hiddenSmooth = storeIfNotNull(hlrShapes.Rg1LineHCompound());
-        result.hiddenSharp = storeIfNotNull(hlrShapes.HCompound());
-        
+        auto result = [&]() -> ProjectionData {
+            const auto& shape = get(shapeId);
+            
+            Handle(HLRBRep_Algo) hlr = new HLRBRep_Algo();
+            hlr->Add(shape, 0);
+            
+            gp_Pnt origin(ox, oy, oz);
+            gp_Dir dir(dx, dy, dz);
+            
+            gp_Ax2 ax2 = hasXAxis ? gp_Ax2(origin, dir, gp_Dir(xx, xy, xz)) : gp_Ax2(origin, dir);
+            
+            HLRAlgo_Projector projector(ax2);
+            hlr->Projector(projector);
+            hlr->Update();
+            hlr->Hide();
+            
+            HLRBRep_HLRToShape hlrShapes(hlr);
+            
+            ProjectionData result{};
+            
+            auto storeIfNotNull = [this](const TopoDS_Shape& s) -> uint32_t {
+                if (s.IsNull())
+                    return 0;
+                BRepLib::BuildCurves3d(s);
+                return store(s);
+            };
+            
+            result.visibleOutline = storeIfNotNull(hlrShapes.OutLineVCompound());
+            result.visibleSmooth = storeIfNotNull(hlrShapes.Rg1LineVCompound());
+            result.visibleSharp = storeIfNotNull(hlrShapes.VCompound());
+            result.hiddenOutline = storeIfNotNull(hlrShapes.OutLineHCompound());
+            result.hiddenSmooth = storeIfNotNull(hlrShapes.Rg1LineHCompound());
+            result.hiddenSharp = storeIfNotNull(hlrShapes.HCompound());
+            
+            return result;
+        }();
+        breakScope.throwIfBroke("projectEdges");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("projectEdges");
         throw std::runtime_error(std::string("projectEdges: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("projectEdges");
+        throw;
     }
 }
 
 ProjectionData OcctKernel::projectEdgesPoly(uint32_t shapeId, double ox, double oy, double oz, double dx, double dy, double dz, double xx, double xy, double xz, bool hasXAxis, double deflection) {
+    BreakScope breakScope(*this);
     try {
-        // The polygon algorithm projects the triangles of a mesh, so it is fast on a
-        // large model, and its edges are short straight lines. It needs a mesh on
-        // each face: mesh a copy of the topology, so the mesh of the shape stays.
-        BRepBuilderAPI_Copy copier(get(shapeId), false, false);
-        TopoDS_Shape shape = copier.Shape();
-        BRepMesh_IncrementalMesh mesher(shape, deflection, false, 0.5);
-        
-        Handle(HLRBRep_PolyAlgo) hlr = new HLRBRep_PolyAlgo();
-        hlr->Load(shape);
-        
-        gp_Pnt origin(ox, oy, oz);
-        gp_Dir dir(dx, dy, dz);
-        
-        gp_Ax2 ax2 = hasXAxis ? gp_Ax2(origin, dir, gp_Dir(xx, xy, xz)) : gp_Ax2(origin, dir);
-        
-        hlr->Projector(HLRAlgo_Projector(ax2));
-        hlr->Update();
-        
-        HLRBRep_PolyHLRToShape hlrShapes;
-        hlrShapes.Update(hlr);
-        
-        ProjectionData result{};
-        
-        auto storeIfNotNull = [this](const TopoDS_Shape& s) -> uint32_t {
-            if (s.IsNull())
-                return 0;
-            BRepLib::BuildCurves3d(s);
-            return store(s);
-        };
-        
-        result.visibleOutline = storeIfNotNull(hlrShapes.OutLineVCompound());
-        result.visibleSmooth = storeIfNotNull(hlrShapes.Rg1LineVCompound());
-        result.visibleSharp = storeIfNotNull(hlrShapes.VCompound());
-        result.hiddenOutline = storeIfNotNull(hlrShapes.OutLineHCompound());
-        result.hiddenSmooth = storeIfNotNull(hlrShapes.Rg1LineHCompound());
-        result.hiddenSharp = storeIfNotNull(hlrShapes.HCompound());
-        
+        auto result = [&]() -> ProjectionData {
+            // The polygon algorithm projects the triangles of a mesh, so it is fast on a
+            // large model, and its edges are short straight lines. It needs a mesh on
+            // each face: mesh a copy of the topology, so the mesh of the shape stays.
+            BRepBuilderAPI_Copy copier(get(shapeId), false, false);
+            TopoDS_Shape shape = copier.Shape();
+            IMeshTools_Parameters meshParams;
+            meshParams.Deflection = deflection;
+            BRepMesh_IncrementalMesh mesher(shape, meshParams, breakRange());
+            
+            Handle(HLRBRep_PolyAlgo) hlr = new HLRBRep_PolyAlgo();
+            hlr->Load(shape);
+            
+            gp_Pnt origin(ox, oy, oz);
+            gp_Dir dir(dx, dy, dz);
+            
+            gp_Ax2 ax2 = hasXAxis ? gp_Ax2(origin, dir, gp_Dir(xx, xy, xz)) : gp_Ax2(origin, dir);
+            
+            hlr->Projector(HLRAlgo_Projector(ax2));
+            hlr->Update();
+            
+            HLRBRep_PolyHLRToShape hlrShapes;
+            hlrShapes.Update(hlr);
+            
+            ProjectionData result{};
+            
+            auto storeIfNotNull = [this](const TopoDS_Shape& s) -> uint32_t {
+                if (s.IsNull())
+                    return 0;
+                BRepLib::BuildCurves3d(s);
+                return store(s);
+            };
+            
+            result.visibleOutline = storeIfNotNull(hlrShapes.OutLineVCompound());
+            result.visibleSmooth = storeIfNotNull(hlrShapes.Rg1LineVCompound());
+            result.visibleSharp = storeIfNotNull(hlrShapes.VCompound());
+            result.hiddenOutline = storeIfNotNull(hlrShapes.OutLineHCompound());
+            result.hiddenSmooth = storeIfNotNull(hlrShapes.Rg1LineHCompound());
+            result.hiddenSharp = storeIfNotNull(hlrShapes.HCompound());
+            
+            return result;
+        }();
+        breakScope.throwIfBroke("projectEdgesPoly");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("projectEdgesPoly");
         throw std::runtime_error(std::string("projectEdgesPoly: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("projectEdgesPoly");
+        throw;
     }
 }

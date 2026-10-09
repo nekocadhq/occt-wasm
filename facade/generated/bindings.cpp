@@ -337,6 +337,8 @@ EMSCRIPTEN_BINDINGS(occt_wasm) {
         .function("checkpoint", &OcctKernel::checkpoint)
         .function("releaseSince", &OcctKernel::releaseSince)
         .function("getShapeCount", &OcctKernel::getShapeCount)
+        .function("setBreakToken", &OcctKernel::setBreakToken)
+        .function("interruptFlagAddress", &OcctKernel::interruptFlagAddress)
         .function("historyBegin", &OcctKernel::historyBegin)
         .function("historyEnd", &OcctKernel::historyEnd)
         .function("historyImages", &OcctKernel::historyImages)

@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,248 +302,337 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === booleans ===
 
 uint32_t OcctKernel::fuse(uint32_t a, uint32_t b) {
+    BreakScope breakScope(*this);
     try {
-        NCollection_List<TopoDS_Shape> arguments;
-        arguments.Append(get(a));
-        NCollection_List<TopoDS_Shape> tools;
-        tools.Append(get(b));
-        BRepAlgoAPI_Fuse op;
-        op.SetArguments(arguments);
-        op.SetTools(tools);
-        op.SetNonDestructive(Standard_True);
-        op.SetRunParallel(Standard_True);
-        op.Build();
-        if (!op.IsDone() || op.HasErrors()) {
-            throw std::runtime_error("fuse: boolean operation failed");
-        }
-        record(op, {get(a), get(b)});
-        return store(op.Shape());
+        auto result = [&]() -> uint32_t {
+            NCollection_List<TopoDS_Shape> arguments;
+            arguments.Append(get(a));
+            NCollection_List<TopoDS_Shape> tools;
+            tools.Append(get(b));
+            BRepAlgoAPI_Fuse op;
+            op.SetArguments(arguments);
+            op.SetTools(tools);
+            op.SetNonDestructive(Standard_True);
+            op.SetRunParallel(Standard_True);
+            op.Build(breakRange());
+            if (!op.IsDone() || op.HasErrors()) {
+                throw std::runtime_error("fuse: boolean operation failed");
+            }
+            record(op, {get(a), get(b)});
+            return store(op.Shape());
+        }();
+        breakScope.throwIfBroke("fuse");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("fuse");
         throw std::runtime_error(std::string("fuse: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("fuse");
+        throw;
     }
 }
 
 uint32_t OcctKernel::cut(uint32_t a, uint32_t b) {
+    BreakScope breakScope(*this);
     try {
-        NCollection_List<TopoDS_Shape> arguments;
-        arguments.Append(get(a));
-        NCollection_List<TopoDS_Shape> tools;
-        tools.Append(get(b));
-        BRepAlgoAPI_Cut op;
-        op.SetArguments(arguments);
-        op.SetTools(tools);
-        op.SetNonDestructive(Standard_True);
-        op.SetRunParallel(Standard_True);
-        op.Build();
-        if (!op.IsDone() || op.HasErrors()) {
-            throw std::runtime_error("cut: boolean operation failed");
-        }
-        record(op, {get(a), get(b)});
-        return store(op.Shape());
+        auto result = [&]() -> uint32_t {
+            NCollection_List<TopoDS_Shape> arguments;
+            arguments.Append(get(a));
+            NCollection_List<TopoDS_Shape> tools;
+            tools.Append(get(b));
+            BRepAlgoAPI_Cut op;
+            op.SetArguments(arguments);
+            op.SetTools(tools);
+            op.SetNonDestructive(Standard_True);
+            op.SetRunParallel(Standard_True);
+            op.Build(breakRange());
+            if (!op.IsDone() || op.HasErrors()) {
+                throw std::runtime_error("cut: boolean operation failed");
+            }
+            record(op, {get(a), get(b)});
+            return store(op.Shape());
+        }();
+        breakScope.throwIfBroke("cut");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("cut");
         throw std::runtime_error(std::string("cut: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("cut");
+        throw;
     }
 }
 
 uint32_t OcctKernel::common(uint32_t a, uint32_t b) {
+    BreakScope breakScope(*this);
     try {
-        NCollection_List<TopoDS_Shape> arguments;
-        arguments.Append(get(a));
-        NCollection_List<TopoDS_Shape> tools;
-        tools.Append(get(b));
-        BRepAlgoAPI_Common op;
-        op.SetArguments(arguments);
-        op.SetTools(tools);
-        op.SetNonDestructive(Standard_True);
-        op.SetRunParallel(Standard_True);
-        op.Build();
-        if (!op.IsDone() || op.HasErrors()) {
-            throw std::runtime_error("common: boolean operation failed");
-        }
-        record(op, {get(a), get(b)});
-        return store(op.Shape());
+        auto result = [&]() -> uint32_t {
+            NCollection_List<TopoDS_Shape> arguments;
+            arguments.Append(get(a));
+            NCollection_List<TopoDS_Shape> tools;
+            tools.Append(get(b));
+            BRepAlgoAPI_Common op;
+            op.SetArguments(arguments);
+            op.SetTools(tools);
+            op.SetNonDestructive(Standard_True);
+            op.SetRunParallel(Standard_True);
+            op.Build(breakRange());
+            if (!op.IsDone() || op.HasErrors()) {
+                throw std::runtime_error("common: boolean operation failed");
+            }
+            record(op, {get(a), get(b)});
+            return store(op.Shape());
+        }();
+        breakScope.throwIfBroke("common");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("common");
         throw std::runtime_error(std::string("common: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("common");
+        throw;
     }
 }
 
 uint32_t OcctKernel::section(uint32_t a, uint32_t b) {
+    BreakScope breakScope(*this);
     try {
-        NCollection_List<TopoDS_Shape> arguments;
-        arguments.Append(get(a));
-        NCollection_List<TopoDS_Shape> tools;
-        tools.Append(get(b));
-        BRepAlgoAPI_Section op;
-        op.SetArguments(arguments);
-        op.SetTools(tools);
-        op.SetNonDestructive(Standard_True);
-        op.SetRunParallel(Standard_True);
-        op.Build();
-        if (!op.IsDone() || op.HasErrors()) {
-            throw std::runtime_error("section: boolean operation failed");
-        }
-        record(op, {get(a), get(b)});
-        return store(op.Shape());
+        auto result = [&]() -> uint32_t {
+            NCollection_List<TopoDS_Shape> arguments;
+            arguments.Append(get(a));
+            NCollection_List<TopoDS_Shape> tools;
+            tools.Append(get(b));
+            BRepAlgoAPI_Section op;
+            op.SetArguments(arguments);
+            op.SetTools(tools);
+            op.SetNonDestructive(Standard_True);
+            op.SetRunParallel(Standard_True);
+            op.Build(breakRange());
+            if (!op.IsDone() || op.HasErrors()) {
+                throw std::runtime_error("section: boolean operation failed");
+            }
+            record(op, {get(a), get(b)});
+            return store(op.Shape());
+        }();
+        breakScope.throwIfBroke("section");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("section");
         throw std::runtime_error(std::string("section: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("section");
+        throw;
     }
 }
 
 uint32_t OcctKernel::intersect(uint32_t a, uint32_t b) {
+    BreakScope breakScope(*this);
     try {
-        return common(a, b);
+        auto result = [&]() -> uint32_t {
+            return common(a, b);
+        }();
+        breakScope.throwIfBroke("intersect");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("intersect");
         throw std::runtime_error(std::string("intersect: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("intersect");
+        throw;
     }
 }
 
 uint32_t OcctKernel::fuseAll(std::vector<uint32_t> shapeIds) {
+    BreakScope breakScope(*this);
     try {
-        if (shapeIds.empty()) {
-            throw std::runtime_error("fuseAll: no shapes provided");
-        }
-        if (shapeIds.size() == 1) {
-            return store(get(shapeIds[0]));
-        }
-        NCollection_List<TopoDS_Shape> args;
-        args.Append(get(shapeIds[0]));
-        NCollection_List<TopoDS_Shape> tools;
-        for (size_t i = 1; i < shapeIds.size(); ++i) {
-            tools.Append(get(shapeIds[i]));
-        }
-        BRepAlgoAPI_Fuse fuser;
-        fuser.SetArguments(args);
-        fuser.SetTools(tools);
-        fuser.SetNonDestructive(Standard_True);
-        fuser.SetRunParallel(true);
-        fuser.Build();
-        if (!fuser.IsDone() || fuser.HasErrors()) {
-            throw std::runtime_error("fuseAll: operation failed");
-        }
-        for (uint32_t sid : shapeIds) {
-            record(fuser, {get(sid)});
-        }
-        return store(fuser.Shape());
+        auto result = [&]() -> uint32_t {
+            if (shapeIds.empty()) {
+                throw std::runtime_error("fuseAll: no shapes provided");
+            }
+            if (shapeIds.size() == 1) {
+                return store(get(shapeIds[0]));
+            }
+            NCollection_List<TopoDS_Shape> args;
+            args.Append(get(shapeIds[0]));
+            NCollection_List<TopoDS_Shape> tools;
+            for (size_t i = 1; i < shapeIds.size(); ++i) {
+                tools.Append(get(shapeIds[i]));
+            }
+            BRepAlgoAPI_Fuse fuser;
+            fuser.SetArguments(args);
+            fuser.SetTools(tools);
+            fuser.SetNonDestructive(Standard_True);
+            fuser.SetRunParallel(true);
+            fuser.Build(breakRange());
+            if (!fuser.IsDone() || fuser.HasErrors()) {
+                throw std::runtime_error("fuseAll: operation failed");
+            }
+            for (uint32_t sid : shapeIds) {
+                record(fuser, {get(sid)});
+            }
+            return store(fuser.Shape());
+        }();
+        breakScope.throwIfBroke("fuseAll");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("fuseAll");
         throw std::runtime_error(std::string("fuseAll: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("fuseAll");
+        throw;
     }
 }
 
 uint32_t OcctKernel::intersectionCells(std::vector<uint32_t> shapeIds) {
+    BreakScope breakScope(*this);
     try {
-        if (shapeIds.size() < 2) {
-            throw std::runtime_error("intersectionCells: need at least 2 shapes");
-        }
-        std::vector<TopoDS_Shape> shapes;
-        NCollection_List<TopoDS_Shape> args;
-        for (uint32_t sid : shapeIds) {
-            const auto& s = get(sid);
-            shapes.push_back(s);
-            args.Append(s);
-        }
-        BOPAlgo_CellsBuilder builder;
-        builder.SetArguments(args);
-        builder.Perform();
-        if (builder.HasErrors()) {
-            throw std::runtime_error("intersectionCells: build failed");
-        }
-        builder.RemoveAllFromResult();
-        for (size_t i = 0; i < shapes.size(); ++i) {
-            for (size_t j = i + 1; j < shapes.size(); ++j) {
-                NCollection_List<TopoDS_Shape> take;
-                take.Append(shapes[i]);
-                take.Append(shapes[j]);
-                NCollection_List<TopoDS_Shape> avoid;
-                builder.AddToResult(take, avoid, 1, false);
+        auto result = [&]() -> uint32_t {
+            if (shapeIds.size() < 2) {
+                throw std::runtime_error("intersectionCells: need at least 2 shapes");
             }
-        }
-        builder.RemoveInternalBoundaries();
-        return store(builder.Shape());
+            std::vector<TopoDS_Shape> shapes;
+            NCollection_List<TopoDS_Shape> args;
+            for (uint32_t sid : shapeIds) {
+                const auto& s = get(sid);
+                shapes.push_back(s);
+                args.Append(s);
+            }
+            BOPAlgo_CellsBuilder builder;
+            builder.SetArguments(args);
+            builder.Perform(breakRange());
+            if (builder.HasErrors()) {
+                throw std::runtime_error("intersectionCells: build failed");
+            }
+            builder.RemoveAllFromResult();
+            for (size_t i = 0; i < shapes.size(); ++i) {
+                for (size_t j = i + 1; j < shapes.size(); ++j) {
+                    NCollection_List<TopoDS_Shape> take;
+                    take.Append(shapes[i]);
+                    take.Append(shapes[j]);
+                    NCollection_List<TopoDS_Shape> avoid;
+                    builder.AddToResult(take, avoid, 1, false);
+                }
+            }
+            builder.RemoveInternalBoundaries();
+            return store(builder.Shape());
+        }();
+        breakScope.throwIfBroke("intersectionCells");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("intersectionCells");
         throw std::runtime_error(std::string("intersectionCells: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("intersectionCells");
+        throw;
     }
 }
 
 uint32_t OcctKernel::cutAll(uint32_t shapeId, std::vector<uint32_t> toolIds) {
+    BreakScope breakScope(*this);
     try {
-        if (toolIds.empty()) {
-            return store(get(shapeId));
-        }
-        NCollection_List<TopoDS_Shape> args;
-        args.Append(get(shapeId));
-        NCollection_List<TopoDS_Shape> tools;
-        for (uint32_t tid : toolIds) {
-            tools.Append(get(tid));
-        }
-        BRepAlgoAPI_Cut cutter;
-        cutter.SetArguments(args);
-        cutter.SetTools(tools);
-        cutter.SetNonDestructive(Standard_True);
-        cutter.SetRunParallel(true);
-        cutter.Build();
-        if (!cutter.IsDone() || cutter.HasErrors()) {
-            throw std::runtime_error("cutAll: operation failed");
-        }
-        record(cutter, {get(shapeId)});
-        for (uint32_t tid : toolIds) {
-            record(cutter, {get(tid)});
-        }
-        return store(cutter.Shape());
+        auto result = [&]() -> uint32_t {
+            if (toolIds.empty()) {
+                return store(get(shapeId));
+            }
+            NCollection_List<TopoDS_Shape> args;
+            args.Append(get(shapeId));
+            NCollection_List<TopoDS_Shape> tools;
+            for (uint32_t tid : toolIds) {
+                tools.Append(get(tid));
+            }
+            BRepAlgoAPI_Cut cutter;
+            cutter.SetArguments(args);
+            cutter.SetTools(tools);
+            cutter.SetNonDestructive(Standard_True);
+            cutter.SetRunParallel(true);
+            cutter.Build(breakRange());
+            if (!cutter.IsDone() || cutter.HasErrors()) {
+                throw std::runtime_error("cutAll: operation failed");
+            }
+            record(cutter, {get(shapeId)});
+            for (uint32_t tid : toolIds) {
+                record(cutter, {get(tid)});
+            }
+            return store(cutter.Shape());
+        }();
+        breakScope.throwIfBroke("cutAll");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("cutAll");
         throw std::runtime_error(std::string("cutAll: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("cutAll");
+        throw;
     }
 }
 
 uint32_t OcctKernel::booleanPipeline(uint32_t baseId, std::vector<int> opCodes, std::vector<uint32_t> toolIds) {
+    BreakScope breakScope(*this);
     try {
-        if (opCodes.size() != toolIds.size()) {
-            throw std::runtime_error("booleanPipeline: opCodes and toolIds must have same length");
-        }
-        TopoDS_Shape current = get(baseId);
-        for (size_t i = 0; i < opCodes.size(); i++) {
-            const auto& tool = get(toolIds[i]);
-            bool isLast = (i == opCodes.size() - 1);
-            Message_ProgressRange progress;
-            NCollection_List<TopoDS_Shape> arguments;
-            arguments.Append(current);
-            NCollection_List<TopoDS_Shape> tools;
-            tools.Append(tool);
-            switch (opCodes[i]) {
-            case 0: { BRepAlgoAPI_Fuse op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: fuse step failed"); current = op.Shape(); break; }
-            case 1: { BRepAlgoAPI_Cut op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: cut step failed"); current = op.Shape(); break; }
-            case 2: { BRepAlgoAPI_Common op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: intersect step failed"); current = op.Shape(); break; }
-            default: throw std::runtime_error("booleanPipeline: unknown opCode");
+        auto result = [&]() -> uint32_t {
+            if (opCodes.size() != toolIds.size()) {
+                throw std::runtime_error("booleanPipeline: opCodes and toolIds must have same length");
             }
-            if (isLast) {
-                ShapeUpgrade_UnifySameDomain upgrader(current, Standard_True, Standard_True, Standard_False);
-                upgrader.Build();
-                current = upgrader.Shape();
+            TopoDS_Shape current = get(baseId);
+            for (size_t i = 0; i < opCodes.size(); i++) {
+                const auto& tool = get(toolIds[i]);
+                bool isLast = (i == opCodes.size() - 1);
+                NCollection_List<TopoDS_Shape> arguments;
+                arguments.Append(current);
+                NCollection_List<TopoDS_Shape> tools;
+                tools.Append(tool);
+                switch (opCodes[i]) {
+                case 0: { BRepAlgoAPI_Fuse op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(breakRange()); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: fuse step failed"); current = op.Shape(); break; }
+                case 1: { BRepAlgoAPI_Cut op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(breakRange()); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: cut step failed"); current = op.Shape(); break; }
+                case 2: { BRepAlgoAPI_Common op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(breakRange()); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error("booleanPipeline: intersect step failed"); current = op.Shape(); break; }
+                default: throw std::runtime_error("booleanPipeline: unknown opCode");
+                }
+                if (isLast) {
+                    ShapeUpgrade_UnifySameDomain upgrader(current, Standard_True, Standard_True, Standard_False);
+                    upgrader.Build();
+                    current = upgrader.Shape();
+                }
             }
-        }
-        return store(current);
+            return store(current);
+        }();
+        breakScope.throwIfBroke("booleanPipeline");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("booleanPipeline");
         throw std::runtime_error(std::string("booleanPipeline: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("booleanPipeline");
+        throw;
     }
 }
 
 uint32_t OcctKernel::split(uint32_t shapeId, std::vector<uint32_t> toolIds) {
+    BreakScope breakScope(*this);
     try {
-        NCollection_List<TopoDS_Shape> args;
-        args.Append(get(shapeId));
-        NCollection_List<TopoDS_Shape> tools;
-        for (uint32_t tid : toolIds) {
-            tools.Append(get(tid));
-        }
-        BRepAlgoAPI_Splitter splitter;
-        splitter.SetArguments(args);
-        splitter.SetTools(tools);
-        splitter.Build();
-        if (!splitter.IsDone() || splitter.HasErrors()) {
-            throw std::runtime_error("split: operation failed");
-        }
-        record(splitter, {get(shapeId)});
-        return store(splitter.Shape());
+        auto result = [&]() -> uint32_t {
+            NCollection_List<TopoDS_Shape> args;
+            args.Append(get(shapeId));
+            NCollection_List<TopoDS_Shape> tools;
+            for (uint32_t tid : toolIds) {
+                tools.Append(get(tid));
+            }
+            BRepAlgoAPI_Splitter splitter;
+            splitter.SetArguments(args);
+            splitter.SetTools(tools);
+            splitter.Build(breakRange());
+            if (!splitter.IsDone() || splitter.HasErrors()) {
+                throw std::runtime_error("split: operation failed");
+            }
+            record(splitter, {get(shapeId)});
+            return store(splitter.Shape());
+        }();
+        breakScope.throwIfBroke("split");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("split");
         throw std::runtime_error(std::string("split: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("split");
+        throw;
     }
 }

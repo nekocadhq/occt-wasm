@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,275 +302,419 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === transforms ===
 
 uint32_t OcctKernel::translate(uint32_t id, double dx, double dy, double dz) {
+    BreakScope breakScope(*this);
     try {
-        gp_Trsf trsf;
-        trsf.SetTranslation(gp_Vec(dx, dy, dz));
-        BRepBuilderAPI_Transform maker(get(id), trsf, false);
-        record(maker, {get(id)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Trsf trsf;
+            trsf.SetTranslation(gp_Vec(dx, dy, dz));
+            BRepBuilderAPI_Transform maker(get(id), trsf, false);
+            record(maker, {get(id)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("translate");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("translate");
         throw std::runtime_error(std::string("translate: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("translate");
+        throw;
     }
 }
 
 uint32_t OcctKernel::rotate(uint32_t id, double px, double py, double pz, double dx, double dy, double dz, double angleRad) {
+    BreakScope breakScope(*this);
     try {
-        gp_Trsf trsf;
-        trsf.SetRotation(gp_Ax1(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz)), angleRad);
-        BRepBuilderAPI_Transform maker(get(id), trsf, false);
-        record(maker, {get(id)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Trsf trsf;
+            trsf.SetRotation(gp_Ax1(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz)), angleRad);
+            BRepBuilderAPI_Transform maker(get(id), trsf, false);
+            record(maker, {get(id)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("rotate");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("rotate");
         throw std::runtime_error(std::string("rotate: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("rotate");
+        throw;
     }
 }
 
 uint32_t OcctKernel::scale(uint32_t id, double px, double py, double pz, double factor) {
+    BreakScope breakScope(*this);
     try {
-        gp_Trsf trsf;
-        trsf.SetScale(gp_Pnt(px, py, pz), factor);
-        BRepBuilderAPI_Transform maker(get(id), trsf, true);
-        record(maker, {get(id)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Trsf trsf;
+            trsf.SetScale(gp_Pnt(px, py, pz), factor);
+            BRepBuilderAPI_Transform maker(get(id), trsf, true);
+            record(maker, {get(id)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("scale");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("scale");
         throw std::runtime_error(std::string("scale: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("scale");
+        throw;
     }
 }
 
 uint32_t OcctKernel::mirror(uint32_t id, double px, double py, double pz, double nx, double ny, double nz) {
+    BreakScope breakScope(*this);
     try {
-        gp_Trsf trsf;
-        trsf.SetMirror(gp_Ax2(gp_Pnt(px, py, pz), gp_Dir(nx, ny, nz)));
-        BRepBuilderAPI_Transform maker(get(id), trsf, true);
-        record(maker, {get(id)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Trsf trsf;
+            trsf.SetMirror(gp_Ax2(gp_Pnt(px, py, pz), gp_Dir(nx, ny, nz)));
+            BRepBuilderAPI_Transform maker(get(id), trsf, true);
+            record(maker, {get(id)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("mirror");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("mirror");
         throw std::runtime_error(std::string("mirror: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("mirror");
+        throw;
     }
 }
 
 uint32_t OcctKernel::copy(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        BRepBuilderAPI_Copy maker(get(id));
-        record(maker, {get(id)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepBuilderAPI_Copy maker(get(id));
+            record(maker, {get(id)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("copy");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("copy");
         throw std::runtime_error(std::string("copy: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("copy");
+        throw;
     }
 }
 
 uint32_t OcctKernel::linearPattern(uint32_t id, double dx, double dy, double dz, double spacing, int count) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Compound compound;
-        TopoDS_Builder builder;
-        builder.MakeCompound(compound);
-        const auto& original = get(id);
-        builder.Add(compound, original);
-        gp_Vec step(dx, dy, dz);
-        step.Normalize();
-        step.Multiply(spacing);
-        for (int i = 1; i < count; i++) {
-            gp_Trsf trsf;
-            gp_Vec offset = step.Multiplied(static_cast<double>(i));
-            trsf.SetTranslation(offset);
-            BRepBuilderAPI_Transform xform(original, trsf, false);
-            builder.Add(compound, xform.Shape());
-        }
-        return store(compound);
+        auto result = [&]() -> uint32_t {
+            TopoDS_Compound compound;
+            TopoDS_Builder builder;
+            builder.MakeCompound(compound);
+            const auto& original = get(id);
+            builder.Add(compound, original);
+            gp_Vec step(dx, dy, dz);
+            step.Normalize();
+            step.Multiply(spacing);
+            for (int i = 1; i < count; i++) {
+                gp_Trsf trsf;
+                gp_Vec offset = step.Multiplied(static_cast<double>(i));
+                trsf.SetTranslation(offset);
+                BRepBuilderAPI_Transform xform(original, trsf, false);
+                builder.Add(compound, xform.Shape());
+            }
+            return store(compound);
+        }();
+        breakScope.throwIfBroke("linearPattern");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("linearPattern");
         throw std::runtime_error(std::string("linearPattern: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("linearPattern");
+        throw;
     }
 }
 
 uint32_t OcctKernel::circularPattern(uint32_t id, double cx, double cy, double cz, double ax, double ay, double az, double angle, int count) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Compound compound;
-        TopoDS_Builder builder;
-        builder.MakeCompound(compound);
-        const auto& original = get(id);
-        builder.Add(compound, original);
-        gp_Ax1 axis(gp_Pnt(cx, cy, cz), gp_Dir(ax, ay, az));
-        double stepAngle = angle / static_cast<double>(count);
-        for (int i = 1; i < count; i++) {
-            gp_Trsf trsf;
-            trsf.SetRotation(axis, stepAngle * static_cast<double>(i));
-            BRepBuilderAPI_Transform xform(original, trsf, false);
-            builder.Add(compound, xform.Shape());
-        }
-        return store(compound);
+        auto result = [&]() -> uint32_t {
+            TopoDS_Compound compound;
+            TopoDS_Builder builder;
+            builder.MakeCompound(compound);
+            const auto& original = get(id);
+            builder.Add(compound, original);
+            gp_Ax1 axis(gp_Pnt(cx, cy, cz), gp_Dir(ax, ay, az));
+            double stepAngle = angle / static_cast<double>(count);
+            for (int i = 1; i < count; i++) {
+                gp_Trsf trsf;
+                trsf.SetRotation(axis, stepAngle * static_cast<double>(i));
+                BRepBuilderAPI_Transform xform(original, trsf, false);
+                builder.Add(compound, xform.Shape());
+            }
+            return store(compound);
+        }();
+        breakScope.throwIfBroke("circularPattern");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("circularPattern");
         throw std::runtime_error(std::string("circularPattern: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("circularPattern");
+        throw;
     }
 }
 
 uint32_t OcctKernel::transform(uint32_t id, std::vector<double> matrix) {
+    BreakScope breakScope(*this);
     try {
-        if (matrix.size() != 12) {
-            throw std::runtime_error("transform: matrix must have 12 elements (3x4)");
-        }
-        gp_Trsf trsf;
-        trsf.SetValues(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5], matrix[6],
-                       matrix[7], matrix[8], matrix[9], matrix[10], matrix[11]);
-        BRepBuilderAPI_Transform maker(get(id), trsf, false);
-        record(maker, {get(id)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            if (matrix.size() != 12) {
+                throw std::runtime_error("transform: matrix must have 12 elements (3x4)");
+            }
+            gp_Trsf trsf;
+            trsf.SetValues(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5], matrix[6],
+                           matrix[7], matrix[8], matrix[9], matrix[10], matrix[11]);
+            BRepBuilderAPI_Transform maker(get(id), trsf, false);
+            record(maker, {get(id)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("transform");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("transform");
         throw std::runtime_error(std::string("transform: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("transform");
+        throw;
     }
 }
 
 uint32_t OcctKernel::located(uint32_t id, std::vector<double> matrix) {
+    BreakScope breakScope(*this);
     try {
-        if (matrix.size() != 12) {
-            throw std::runtime_error("located: matrix must have 12 elements (3x4)");
-        }
-        gp_Trsf trsf;
-        trsf.SetValues(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5], matrix[6],
-                       matrix[7], matrix[8], matrix[9], matrix[10], matrix[11]);
-        TopLoc_Location loc(trsf);
-        return store(get(id).Moved(loc));
+        auto result = [&]() -> uint32_t {
+            if (matrix.size() != 12) {
+                throw std::runtime_error("located: matrix must have 12 elements (3x4)");
+            }
+            gp_Trsf trsf;
+            trsf.SetValues(matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5], matrix[6],
+                           matrix[7], matrix[8], matrix[9], matrix[10], matrix[11]);
+            TopLoc_Location loc(trsf);
+            return store(get(id).Moved(loc));
+        }();
+        breakScope.throwIfBroke("located");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("located");
         throw std::runtime_error(std::string("located: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("located");
+        throw;
     }
 }
 
 uint32_t OcctKernel::generalTransform(uint32_t id, std::vector<double> matrix) {
+    BreakScope breakScope(*this);
     try {
-        if (matrix.size() != 12) {
-            throw std::runtime_error("generalTransform: matrix must have 12 elements (3x4)");
-        }
-        gp_GTrsf gt;
-        gt.SetValue(1, 1, matrix[0]); gt.SetValue(1, 2, matrix[1]); gt.SetValue(1, 3, matrix[2]); gt.SetValue(1, 4, matrix[3]);
-        gt.SetValue(2, 1, matrix[4]); gt.SetValue(2, 2, matrix[5]); gt.SetValue(2, 3, matrix[6]); gt.SetValue(2, 4, matrix[7]);
-        gt.SetValue(3, 1, matrix[8]); gt.SetValue(3, 2, matrix[9]); gt.SetValue(3, 3, matrix[10]); gt.SetValue(3, 4, matrix[11]);
-        BRepBuilderAPI_GTransform maker(get(id), gt, true);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("generalTransform: transform failed");
-        }
-        record(maker, {get(id)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            if (matrix.size() != 12) {
+                throw std::runtime_error("generalTransform: matrix must have 12 elements (3x4)");
+            }
+            gp_GTrsf gt;
+            gt.SetValue(1, 1, matrix[0]); gt.SetValue(1, 2, matrix[1]); gt.SetValue(1, 3, matrix[2]); gt.SetValue(1, 4, matrix[3]);
+            gt.SetValue(2, 1, matrix[4]); gt.SetValue(2, 2, matrix[5]); gt.SetValue(2, 3, matrix[6]); gt.SetValue(2, 4, matrix[7]);
+            gt.SetValue(3, 1, matrix[8]); gt.SetValue(3, 2, matrix[9]); gt.SetValue(3, 3, matrix[10]); gt.SetValue(3, 4, matrix[11]);
+            BRepBuilderAPI_GTransform maker(get(id), gt, true);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("generalTransform: transform failed");
+            }
+            record(maker, {get(id)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("generalTransform");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("generalTransform");
         throw std::runtime_error(std::string("generalTransform: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("generalTransform");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::translateBatch(std::vector<uint32_t> ids, std::vector<double> offsets) {
+    BreakScope breakScope(*this);
     try {
-        if (offsets.size() != ids.size() * 3) {
-            throw std::runtime_error("translateBatch: offsets must have 3 * ids.size() elements");
-        }
-        std::vector<uint32_t> results;
-        results.reserve(ids.size());
-        for (size_t i = 0; i < ids.size(); i++) {
-            gp_Trsf trsf;
-            trsf.SetTranslation(gp_Vec(offsets[i * 3], offsets[i * 3 + 1], offsets[i * 3 + 2]));
-            BRepBuilderAPI_Transform maker(get(ids[i]), trsf, false);
-            results.push_back(store(maker.Shape()));
-        }
-        return results;
+        auto result = [&]() -> std::vector<uint32_t> {
+            if (offsets.size() != ids.size() * 3) {
+                throw std::runtime_error("translateBatch: offsets must have 3 * ids.size() elements");
+            }
+            std::vector<uint32_t> results;
+            results.reserve(ids.size());
+            for (size_t i = 0; i < ids.size(); i++) {
+                gp_Trsf trsf;
+                trsf.SetTranslation(gp_Vec(offsets[i * 3], offsets[i * 3 + 1], offsets[i * 3 + 2]));
+                BRepBuilderAPI_Transform maker(get(ids[i]), trsf, false);
+                results.push_back(store(maker.Shape()));
+            }
+            return results;
+        }();
+        breakScope.throwIfBroke("translateBatch");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("translateBatch");
         throw std::runtime_error(std::string("translateBatch: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("translateBatch");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::composeTransform(std::vector<double> m1, std::vector<double> m2) {
+    BreakScope breakScope(*this);
     try {
-        if (m1.size() != 12 || m2.size() != 12) {
-            throw std::runtime_error("composeTransform: each matrix must have 12 elements");
-        }
-        gp_Trsf t1, t2;
-        t1.SetValues(m1[0], m1[1], m1[2], m1[3], m1[4], m1[5], m1[6], m1[7], m1[8], m1[9], m1[10], m1[11]);
-        t2.SetValues(m2[0], m2[1], m2[2], m2[3], m2[4], m2[5], m2[6], m2[7], m2[8], m2[9], m2[10], m2[11]);
-        gp_Trsf result = t1.Multiplied(t2);
-        return {result.Value(1, 1), result.Value(1, 2), result.Value(1, 3), result.Value(1, 4),
-                result.Value(2, 1), result.Value(2, 2), result.Value(2, 3), result.Value(2, 4),
-                result.Value(3, 1), result.Value(3, 2), result.Value(3, 3), result.Value(3, 4)};
+        auto result = [&]() -> std::vector<double> {
+            if (m1.size() != 12 || m2.size() != 12) {
+                throw std::runtime_error("composeTransform: each matrix must have 12 elements");
+            }
+            gp_Trsf t1, t2;
+            t1.SetValues(m1[0], m1[1], m1[2], m1[3], m1[4], m1[5], m1[6], m1[7], m1[8], m1[9], m1[10], m1[11]);
+            t2.SetValues(m2[0], m2[1], m2[2], m2[3], m2[4], m2[5], m2[6], m2[7], m2[8], m2[9], m2[10], m2[11]);
+            gp_Trsf result = t1.Multiplied(t2);
+            return {result.Value(1, 1), result.Value(1, 2), result.Value(1, 3), result.Value(1, 4),
+                    result.Value(2, 1), result.Value(2, 2), result.Value(2, 3), result.Value(2, 4),
+                    result.Value(3, 1), result.Value(3, 2), result.Value(3, 3), result.Value(3, 4)};
+        }();
+        breakScope.throwIfBroke("composeTransform");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("composeTransform");
         throw std::runtime_error(std::string("composeTransform: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("composeTransform");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::transformBatch(std::vector<uint32_t> ids, std::vector<double> matrices) {
+    BreakScope breakScope(*this);
     try {
-        if (matrices.size() != ids.size() * 12) {
-            throw std::runtime_error("transformBatch: matrices must have 12 * ids.size() elements");
-        }
-        std::vector<uint32_t> results;
-        results.reserve(ids.size());
-        for (size_t i = 0; i < ids.size(); i++) {
-            size_t o = i * 12;
-            gp_Trsf trsf;
-            trsf.SetValues(matrices[o], matrices[o+1], matrices[o+2], matrices[o+3],
-                           matrices[o+4], matrices[o+5], matrices[o+6], matrices[o+7],
-                           matrices[o+8], matrices[o+9], matrices[o+10], matrices[o+11]);
-            BRepBuilderAPI_Transform maker(get(ids[i]), trsf, false);
-            if (!maker.IsDone()) throw std::runtime_error("transformBatch: failed on shape " + std::to_string(i));
-            results.push_back(store(maker.Shape()));
-        }
-        return results;
+        auto result = [&]() -> std::vector<uint32_t> {
+            if (matrices.size() != ids.size() * 12) {
+                throw std::runtime_error("transformBatch: matrices must have 12 * ids.size() elements");
+            }
+            std::vector<uint32_t> results;
+            results.reserve(ids.size());
+            for (size_t i = 0; i < ids.size(); i++) {
+                size_t o = i * 12;
+                gp_Trsf trsf;
+                trsf.SetValues(matrices[o], matrices[o+1], matrices[o+2], matrices[o+3],
+                               matrices[o+4], matrices[o+5], matrices[o+6], matrices[o+7],
+                               matrices[o+8], matrices[o+9], matrices[o+10], matrices[o+11]);
+                BRepBuilderAPI_Transform maker(get(ids[i]), trsf, false);
+                if (!maker.IsDone()) throw std::runtime_error("transformBatch: failed on shape " + std::to_string(i));
+                results.push_back(store(maker.Shape()));
+            }
+            return results;
+        }();
+        breakScope.throwIfBroke("transformBatch");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("transformBatch");
         throw std::runtime_error(std::string("transformBatch: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("transformBatch");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::rotateBatch(std::vector<uint32_t> ids, std::vector<double> params) {
+    BreakScope breakScope(*this);
     try {
-        if (params.size() != ids.size() * 7) {
-            throw std::runtime_error("rotateBatch: params must have 7 * ids.size() elements (px,py,pz,dx,dy,dz,angle)");
-        }
-        std::vector<uint32_t> results;
-        results.reserve(ids.size());
-        for (size_t i = 0; i < ids.size(); i++) {
-            size_t o = i * 7;
-            gp_Trsf trsf;
-            trsf.SetRotation(gp_Ax1(gp_Pnt(params[o], params[o+1], params[o+2]),
-                                     gp_Dir(params[o+3], params[o+4], params[o+5])), params[o+6]);
-            BRepBuilderAPI_Transform maker(get(ids[i]), trsf, false);
-            results.push_back(store(maker.Shape()));
-        }
-        return results;
+        auto result = [&]() -> std::vector<uint32_t> {
+            if (params.size() != ids.size() * 7) {
+                throw std::runtime_error("rotateBatch: params must have 7 * ids.size() elements (px,py,pz,dx,dy,dz,angle)");
+            }
+            std::vector<uint32_t> results;
+            results.reserve(ids.size());
+            for (size_t i = 0; i < ids.size(); i++) {
+                size_t o = i * 7;
+                gp_Trsf trsf;
+                trsf.SetRotation(gp_Ax1(gp_Pnt(params[o], params[o+1], params[o+2]),
+                                         gp_Dir(params[o+3], params[o+4], params[o+5])), params[o+6]);
+                BRepBuilderAPI_Transform maker(get(ids[i]), trsf, false);
+                results.push_back(store(maker.Shape()));
+            }
+            return results;
+        }();
+        breakScope.throwIfBroke("rotateBatch");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("rotateBatch");
         throw std::runtime_error(std::string("rotateBatch: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("rotateBatch");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::scaleBatch(std::vector<uint32_t> ids, std::vector<double> params) {
+    BreakScope breakScope(*this);
     try {
-        if (params.size() != ids.size() * 4) {
-            throw std::runtime_error("scaleBatch: params must have 4 * ids.size() elements (px,py,pz,factor)");
-        }
-        std::vector<uint32_t> results;
-        results.reserve(ids.size());
-        for (size_t i = 0; i < ids.size(); i++) {
-            size_t o = i * 4;
-            gp_Trsf trsf;
-            trsf.SetScale(gp_Pnt(params[o], params[o+1], params[o+2]), params[o+3]);
-            BRepBuilderAPI_Transform maker(get(ids[i]), trsf, true);
-            results.push_back(store(maker.Shape()));
-        }
-        return results;
+        auto result = [&]() -> std::vector<uint32_t> {
+            if (params.size() != ids.size() * 4) {
+                throw std::runtime_error("scaleBatch: params must have 4 * ids.size() elements (px,py,pz,factor)");
+            }
+            std::vector<uint32_t> results;
+            results.reserve(ids.size());
+            for (size_t i = 0; i < ids.size(); i++) {
+                size_t o = i * 4;
+                gp_Trsf trsf;
+                trsf.SetScale(gp_Pnt(params[o], params[o+1], params[o+2]), params[o+3]);
+                BRepBuilderAPI_Transform maker(get(ids[i]), trsf, true);
+                results.push_back(store(maker.Shape()));
+            }
+            return results;
+        }();
+        breakScope.throwIfBroke("scaleBatch");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("scaleBatch");
         throw std::runtime_error(std::string("scaleBatch: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("scaleBatch");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::mirrorBatch(std::vector<uint32_t> ids, std::vector<double> params) {
+    BreakScope breakScope(*this);
     try {
-        if (params.size() != ids.size() * 6) {
-            throw std::runtime_error("mirrorBatch: params must have 6 * ids.size() elements (px,py,pz,nx,ny,nz)");
-        }
-        std::vector<uint32_t> results;
-        results.reserve(ids.size());
-        for (size_t i = 0; i < ids.size(); i++) {
-            size_t o = i * 6;
-            gp_Trsf trsf;
-            trsf.SetMirror(gp_Ax2(gp_Pnt(params[o], params[o+1], params[o+2]),
-                                   gp_Dir(params[o+3], params[o+4], params[o+5])));
-            BRepBuilderAPI_Transform maker(get(ids[i]), trsf, true);
-            results.push_back(store(maker.Shape()));
-        }
-        return results;
+        auto result = [&]() -> std::vector<uint32_t> {
+            if (params.size() != ids.size() * 6) {
+                throw std::runtime_error("mirrorBatch: params must have 6 * ids.size() elements (px,py,pz,nx,ny,nz)");
+            }
+            std::vector<uint32_t> results;
+            results.reserve(ids.size());
+            for (size_t i = 0; i < ids.size(); i++) {
+                size_t o = i * 6;
+                gp_Trsf trsf;
+                trsf.SetMirror(gp_Ax2(gp_Pnt(params[o], params[o+1], params[o+2]),
+                                       gp_Dir(params[o+3], params[o+4], params[o+5])));
+                BRepBuilderAPI_Transform maker(get(ids[i]), trsf, true);
+                results.push_back(store(maker.Shape()));
+            }
+            return results;
+        }();
+        breakScope.throwIfBroke("mirrorBatch");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("mirrorBatch");
         throw std::runtime_error(std::string("mirrorBatch: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("mirrorBatch");
+        throw;
     }
 }

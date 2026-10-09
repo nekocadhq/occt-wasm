@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,104 +302,197 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === kernel ===
 
 void OcctKernel::release(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        arena_.erase(id);
+        [&]() -> void {
+            arena_.erase(id);
+        }();
+        breakScope.throwIfBroke("release");
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("release");
         throw std::runtime_error(std::string("release: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("release");
+        throw;
     }
 }
 
 void OcctKernel::releaseAll() {
+    BreakScope breakScope(*this);
     try {
-        arena_.clear();
-        nextId_ = 1;
-        journals_.clear();
-        histories_.clear();
+        [&]() -> void {
+            arena_.clear();
+            nextId_ = 1;
+            journals_.clear();
+            histories_.clear();
+        }();
+        breakScope.throwIfBroke("releaseAll");
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("releaseAll");
         throw std::runtime_error(std::string("releaseAll: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("releaseAll");
+        throw;
     }
 }
 
 uint32_t OcctKernel::checkpoint() {
+    BreakScope breakScope(*this);
     try {
-        return nextId_;
+        auto result = [&]() -> uint32_t {
+            return nextId_;
+        }();
+        breakScope.throwIfBroke("checkpoint");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("checkpoint");
         throw std::runtime_error(std::string("checkpoint: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("checkpoint");
+        throw;
     }
 }
 
 void OcctKernel::releaseSince(uint32_t mark) {
+    BreakScope breakScope(*this);
     try {
-        for (auto it = arena_.begin(); it != arena_.end();) {
-            if (it->first >= mark) {
-                it = arena_.erase(it);
-            } else {
-                ++it;
+        [&]() -> void {
+            for (auto it = arena_.begin(); it != arena_.end();) {
+                if (it->first >= mark) {
+                    it = arena_.erase(it);
+                } else {
+                    ++it;
+                }
             }
-        }
+        }();
+        breakScope.throwIfBroke("releaseSince");
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("releaseSince");
         throw std::runtime_error(std::string("releaseSince: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("releaseSince");
+        throw;
     }
 }
 
 uint32_t OcctKernel::getShapeCount() {
+    BreakScope breakScope(*this);
     try {
-        return static_cast<uint32_t>(arena_.size());
+        auto result = [&]() -> uint32_t {
+            return static_cast<uint32_t>(arena_.size());
+        }();
+        breakScope.throwIfBroke("getShapeCount");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getShapeCount");
         throw std::runtime_error(std::string("getShapeCount: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getShapeCount");
+        throw;
     }
 }
 
+void OcctKernel::setBreakToken(int token) {
+    breaker_->token.store(token, std::memory_order_relaxed);
+}
+
+double OcctKernel::interruptFlagAddress() {
+    return static_cast<double>(reinterpret_cast<uintptr_t>(&breaker_->flag));
+}
+
 void OcctKernel::historyBegin() {
+    BreakScope breakScope(*this);
     try {
-        journals_.emplace_back();
+        [&]() -> void {
+            journals_.emplace_back();
+        }();
+        breakScope.throwIfBroke("historyBegin");
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("historyBegin");
         throw std::runtime_error(std::string("historyBegin: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("historyBegin");
+        throw;
     }
 }
 
 uint32_t OcctKernel::historyEnd() {
+    BreakScope breakScope(*this);
     try {
-        if (journals_.empty()) {
-            throw std::runtime_error("historyEnd: no history records");
-        }
-        uint32_t id = nextHistoryId_++;
-        histories_.emplace(id, std::move(journals_.back()));
-        journals_.pop_back();
-        return id;
+        auto result = [&]() -> uint32_t {
+            if (journals_.empty()) {
+                throw std::runtime_error("historyEnd: no history records");
+            }
+            uint32_t id = nextHistoryId_++;
+            histories_.emplace(id, std::move(journals_.back()));
+            journals_.pop_back();
+            return id;
+        }();
+        breakScope.throwIfBroke("historyEnd");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("historyEnd");
         throw std::runtime_error(std::string("historyEnd: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("historyEnd");
+        throw;
     }
 }
 
 std::vector<int> OcctKernel::historyImages(uint32_t historyId, std::vector<uint32_t> fromIds, uint32_t resultId, const std::string& shapeType) {
+    BreakScope breakScope(*this);
     try {
-        auto it = histories_.find(historyId);
-        if (it == histories_.end()) {
-            throw std::runtime_error("historyImages: invalid history ID: " + std::to_string(historyId));
-        }
-        TopAbs_ShapeEnum type;
-        if (shapeType == "face") type = TopAbs_FACE;
-        else if (shapeType == "edge") type = TopAbs_EDGE;
-        else throw std::runtime_error("historyImages: the type is face or edge, not " + shapeType);
-        return imagesOf(it->second, fromIds, get(resultId), type);
+        auto result = [&]() -> std::vector<int> {
+            auto it = histories_.find(historyId);
+            if (it == histories_.end()) {
+                throw std::runtime_error("historyImages: invalid history ID: " + std::to_string(historyId));
+            }
+            TopAbs_ShapeEnum type;
+            if (shapeType == "face") type = TopAbs_FACE;
+            else if (shapeType == "edge") type = TopAbs_EDGE;
+            else throw std::runtime_error("historyImages: the type is face or edge, not " + shapeType);
+            return imagesOf(it->second, fromIds, get(resultId), type);
+        }();
+        breakScope.throwIfBroke("historyImages");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("historyImages");
         throw std::runtime_error(std::string("historyImages: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("historyImages");
+        throw;
     }
 }
 
 void OcctKernel::historyRelease(uint32_t historyId) {
+    BreakScope breakScope(*this);
     try {
-        histories_.erase(historyId);
+        [&]() -> void {
+            histories_.erase(historyId);
+        }();
+        breakScope.throwIfBroke("historyRelease");
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("historyRelease");
         throw std::runtime_error(std::string("historyRelease: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("historyRelease");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeNullShape() {
+    BreakScope breakScope(*this);
     try {
-        return store(TopoDS_Shape());
+        auto result = [&]() -> uint32_t {
+            return store(TopoDS_Shape());
+        }();
+        breakScope.throwIfBroke("makeNullShape");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeNullShape");
         throw std::runtime_error(std::string("makeNullShape: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeNullShape");
+        throw;
     }
 }

@@ -167,6 +167,33 @@ await OcctKernel.init({ wasm: "/assets/occt-wasm.wasm", wasmThreaded: "/assets/o
 
 Measured on an M4 Max in Node.js, release builds: the gridfinity `cutAll` benchmark takes 46 ms instead of 64 ms, `fuseAll` 25 ms instead of 34 ms, and meshing a plate with 144 holes (73k triangles) 1.8x less time. Small jobs gain nothing, and a mesh of a few faces is slightly slower.
 
+### Stop a call from another thread
+
+A call of WebAssembly does not read messages until it returns. On the threaded build, another thread can still stop a long boolean, shell, offset, mesh, STEP import, fillet, or chamfer: it writes the token of the call into the interrupt flag, an `Int32` in the shared heap. The algorithm stops at its next check, and the call throws an `OcctError` with the code `Interrupted`. Its inputs do not change, and it leaves no new handle in the arena.
+
+```typescript check kernel,a,b
+import { OcctError, OcctErrorCode } from "occt-wasm";
+
+// null on a build without threads: there, each call runs to its end.
+const flag = kernel.interruptFlag();
+// Send `flag` to the thread that stops the call, one time. That thread stops
+// the call of token 42 with: Atomics.store(flag, 0, 42)
+
+kernel.setBreakToken(42);
+try {
+  kernel.fuse(a, b);
+} catch (e) {
+  if (e instanceof OcctError && e.code === OcctErrorCode.Interrupted) {
+    // stopped: the result is not needed now
+  }
+} finally {
+  kernel.setBreakToken(0);
+}
+console.log(flag);
+```
+
+Give each call that can stop its own token. A stop that arrives after its call ended holds a token that no call has, and it stops nothing.
+
 ## Error Handling
 
 All errors are instances of `OcctError` with a structured `code` field for programmatic handling:
@@ -206,6 +233,7 @@ Available error codes:
 | `ImportExportFailed` | STEP/STL/BREP I/O error                         |
 | `HealingFailed`      | Shape repair failed                             |
 | `DocumentClosed`     | Operation on a closed XCAF document             |
+| `Interrupted`        | A stop from another thread (`setBreakToken`)    |
 | `KernelError`        | OCCT `Standard_Failure` (unclassified)          |
 | `Unknown`            | Error from outside the kernel                   |
 

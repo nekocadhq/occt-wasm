@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,275 +302,410 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === topology ===
 
 std::string OcctKernel::getShapeType(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        switch (get(id).ShapeType()) {
-        case TopAbs_VERTEX: return "vertex";
-        case TopAbs_EDGE: return "edge";
-        case TopAbs_WIRE: return "wire";
-        case TopAbs_FACE: return "face";
-        case TopAbs_SHELL: return "shell";
-        case TopAbs_SOLID: return "solid";
-        case TopAbs_COMPSOLID: return "compsolid";
-        case TopAbs_COMPOUND: return "compound";
-        default: return "shape";
-        }
+        auto result = [&]() -> std::string {
+            switch (get(id).ShapeType()) {
+            case TopAbs_VERTEX: return "vertex";
+            case TopAbs_EDGE: return "edge";
+            case TopAbs_WIRE: return "wire";
+            case TopAbs_FACE: return "face";
+            case TopAbs_SHELL: return "shell";
+            case TopAbs_SOLID: return "solid";
+            case TopAbs_COMPSOLID: return "compsolid";
+            case TopAbs_COMPOUND: return "compound";
+            default: return "shape";
+            }
+        }();
+        breakScope.throwIfBroke("getShapeType");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getShapeType");
         throw std::runtime_error(std::string("getShapeType: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getShapeType");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::getSubShapes(uint32_t id, const std::string& shapeType) {
+    BreakScope breakScope(*this);
     try {
-        auto parseType = [](const std::string& t) -> TopAbs_ShapeEnum {
-            if (t == "vertex") return TopAbs_VERTEX;
-            if (t == "edge") return TopAbs_EDGE;
-            if (t == "wire") return TopAbs_WIRE;
-            if (t == "face") return TopAbs_FACE;
-            if (t == "shell") return TopAbs_SHELL;
-            if (t == "solid") return TopAbs_SOLID;
-            if (t == "compsolid") return TopAbs_COMPSOLID;
-            if (t == "compound") return TopAbs_COMPOUND;
-            throw std::runtime_error("Unknown shape type: " + t);
-        };
-        TopAbs_ShapeEnum toExplore = parseType(shapeType);
-        std::vector<uint32_t> result;
-        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
-        TopExp::MapShapes(get(id), toExplore, map);
-        for (int i = 1; i <= map.Extent(); i++) {
-            result.push_back(store(map.FindKey(i)));
-        }
+        auto result = [&]() -> std::vector<uint32_t> {
+            auto parseType = [](const std::string& t) -> TopAbs_ShapeEnum {
+                if (t == "vertex") return TopAbs_VERTEX;
+                if (t == "edge") return TopAbs_EDGE;
+                if (t == "wire") return TopAbs_WIRE;
+                if (t == "face") return TopAbs_FACE;
+                if (t == "shell") return TopAbs_SHELL;
+                if (t == "solid") return TopAbs_SOLID;
+                if (t == "compsolid") return TopAbs_COMPSOLID;
+                if (t == "compound") return TopAbs_COMPOUND;
+                throw std::runtime_error("Unknown shape type: " + t);
+            };
+            TopAbs_ShapeEnum toExplore = parseType(shapeType);
+            std::vector<uint32_t> result;
+            NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+            TopExp::MapShapes(get(id), toExplore, map);
+            for (int i = 1; i <= map.Extent(); i++) {
+                result.push_back(store(map.FindKey(i)));
+            }
+            return result;
+        }();
+        breakScope.throwIfBroke("getSubShapes");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getSubShapes");
         throw std::runtime_error(std::string("getSubShapes: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getSubShapes");
+        throw;
     }
 }
 
 int OcctKernel::subShapeCount(uint32_t id, const std::string& shapeType) {
+    BreakScope breakScope(*this);
     try {
-        auto parseType = [](const std::string& t) -> TopAbs_ShapeEnum {
-            if (t == "vertex") return TopAbs_VERTEX;
-            if (t == "edge") return TopAbs_EDGE;
-            if (t == "wire") return TopAbs_WIRE;
-            if (t == "face") return TopAbs_FACE;
-            if (t == "shell") return TopAbs_SHELL;
-            if (t == "solid") return TopAbs_SOLID;
-            if (t == "compsolid") return TopAbs_COMPSOLID;
-            if (t == "compound") return TopAbs_COMPOUND;
-            throw std::runtime_error("Unknown shape type: " + t);
-        };
-        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
-        TopExp::MapShapes(get(id), parseType(shapeType), map);
-        return map.Extent();
+        auto result = [&]() -> int {
+            auto parseType = [](const std::string& t) -> TopAbs_ShapeEnum {
+                if (t == "vertex") return TopAbs_VERTEX;
+                if (t == "edge") return TopAbs_EDGE;
+                if (t == "wire") return TopAbs_WIRE;
+                if (t == "face") return TopAbs_FACE;
+                if (t == "shell") return TopAbs_SHELL;
+                if (t == "solid") return TopAbs_SOLID;
+                if (t == "compsolid") return TopAbs_COMPSOLID;
+                if (t == "compound") return TopAbs_COMPOUND;
+                throw std::runtime_error("Unknown shape type: " + t);
+            };
+            NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+            TopExp::MapShapes(get(id), parseType(shapeType), map);
+            return map.Extent();
+        }();
+        breakScope.throwIfBroke("subShapeCount");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("subShapeCount");
         throw std::runtime_error(std::string("subShapeCount: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("subShapeCount");
+        throw;
     }
 }
 
 std::vector<int> OcctKernel::subShapeHashes(uint32_t id, const std::string& shapeType, int hashUpperBound) {
+    BreakScope breakScope(*this);
     try {
-        auto parseType = [](const std::string& t) -> TopAbs_ShapeEnum {
-            if (t == "vertex") return TopAbs_VERTEX;
-            if (t == "edge") return TopAbs_EDGE;
-            if (t == "wire") return TopAbs_WIRE;
-            if (t == "face") return TopAbs_FACE;
-            if (t == "shell") return TopAbs_SHELL;
-            if (t == "solid") return TopAbs_SOLID;
-            if (t == "compsolid") return TopAbs_COMPSOLID;
-            if (t == "compound") return TopAbs_COMPOUND;
-            throw std::runtime_error("Unknown shape type: " + t);
-        };
-        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
-        TopExp::MapShapes(get(id), parseType(shapeType), map);
-        std::vector<int> result;
-        result.reserve(map.Extent());
-        for (int i = 1; i <= map.Extent(); i++) {
-            result.push_back(static_cast<int>(TopTools_ShapeMapHasher{}(map.FindKey(i)) %
-                                              static_cast<size_t>(hashUpperBound)));
-        }
+        auto result = [&]() -> std::vector<int> {
+            auto parseType = [](const std::string& t) -> TopAbs_ShapeEnum {
+                if (t == "vertex") return TopAbs_VERTEX;
+                if (t == "edge") return TopAbs_EDGE;
+                if (t == "wire") return TopAbs_WIRE;
+                if (t == "face") return TopAbs_FACE;
+                if (t == "shell") return TopAbs_SHELL;
+                if (t == "solid") return TopAbs_SOLID;
+                if (t == "compsolid") return TopAbs_COMPSOLID;
+                if (t == "compound") return TopAbs_COMPOUND;
+                throw std::runtime_error("Unknown shape type: " + t);
+            };
+            NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+            TopExp::MapShapes(get(id), parseType(shapeType), map);
+            std::vector<int> result;
+            result.reserve(map.Extent());
+            for (int i = 1; i <= map.Extent(); i++) {
+                result.push_back(static_cast<int>(TopTools_ShapeMapHasher{}(map.FindKey(i)) %
+                                                  static_cast<size_t>(hashUpperBound)));
+            }
+            return result;
+        }();
+        breakScope.throwIfBroke("subShapeHashes");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("subShapeHashes");
         throw std::runtime_error(std::string("subShapeHashes: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("subShapeHashes");
+        throw;
     }
 }
 
 double OcctKernel::distanceBetween(uint32_t a, uint32_t b) {
+    BreakScope breakScope(*this);
     try {
-        BRepExtrema_DistShapeShape dist(get(a), get(b));
-        if (!dist.IsDone()) {
-            throw std::runtime_error("distanceBetween: computation failed");
-        }
-        return dist.Value();
+        auto result = [&]() -> double {
+            BRepExtrema_DistShapeShape dist(get(a), get(b));
+            if (!dist.IsDone()) {
+                throw std::runtime_error("distanceBetween: computation failed");
+            }
+            return dist.Value();
+        }();
+        breakScope.throwIfBroke("distanceBetween");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("distanceBetween");
         throw std::runtime_error(std::string("distanceBetween: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("distanceBetween");
+        throw;
     }
 }
 
 bool OcctKernel::isSame(uint32_t a, uint32_t b) {
+    BreakScope breakScope(*this);
     try {
-        return get(a).IsSame(get(b));
+        auto result = [&]() -> bool {
+            return get(a).IsSame(get(b));
+        }();
+        breakScope.throwIfBroke("isSame");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("isSame");
         throw std::runtime_error(std::string("isSame: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("isSame");
+        throw;
     }
 }
 
 bool OcctKernel::isEqual(uint32_t a, uint32_t b) {
+    BreakScope breakScope(*this);
     try {
-        return get(a).IsEqual(get(b));
+        auto result = [&]() -> bool {
+            return get(a).IsEqual(get(b));
+        }();
+        breakScope.throwIfBroke("isEqual");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("isEqual");
         throw std::runtime_error(std::string("isEqual: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("isEqual");
+        throw;
     }
 }
 
 bool OcctKernel::isNull(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        return get(id).IsNull();
+        auto result = [&]() -> bool {
+            return get(id).IsNull();
+        }();
+        breakScope.throwIfBroke("isNull");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("isNull");
         throw std::runtime_error(std::string("isNull: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("isNull");
+        throw;
     }
 }
 
 int OcctKernel::hashCode(uint32_t id, int upperBound) {
+    BreakScope breakScope(*this);
     try {
-        return static_cast<int>(TopTools_ShapeMapHasher{}(get(id)) % static_cast<size_t>(upperBound));
+        auto result = [&]() -> int {
+            return static_cast<int>(TopTools_ShapeMapHasher{}(get(id)) % static_cast<size_t>(upperBound));
+        }();
+        breakScope.throwIfBroke("hashCode");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("hashCode");
         throw std::runtime_error(std::string("hashCode: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("hashCode");
+        throw;
     }
 }
 
 std::string OcctKernel::shapeOrientation(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        switch (get(id).Orientation()) {
-        case TopAbs_FORWARD:
-            return "forward";
-        case TopAbs_REVERSED:
-            return "reversed";
-        case TopAbs_INTERNAL:
-            return "internal";
-        case TopAbs_EXTERNAL:
-            return "external";
-        default:
-            return "unknown";
-        }
+        auto result = [&]() -> std::string {
+            switch (get(id).Orientation()) {
+            case TopAbs_FORWARD:
+                return "forward";
+            case TopAbs_REVERSED:
+                return "reversed";
+            case TopAbs_INTERNAL:
+                return "internal";
+            case TopAbs_EXTERNAL:
+                return "external";
+            default:
+                return "unknown";
+            }
+        }();
+        breakScope.throwIfBroke("shapeOrientation");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("shapeOrientation");
         throw std::runtime_error(std::string("shapeOrientation: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("shapeOrientation");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::iterShapes(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        std::vector<uint32_t> result;
-        for (TopoDS_Iterator it(get(id)); it.More(); it.Next()) {
-            result.push_back(store(it.Value()));
-        }
+        auto result = [&]() -> std::vector<uint32_t> {
+            std::vector<uint32_t> result;
+            for (TopoDS_Iterator it(get(id)); it.More(); it.Next()) {
+                result.push_back(store(it.Value()));
+            }
+            return result;
+        }();
+        breakScope.throwIfBroke("iterShapes");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("iterShapes");
         throw std::runtime_error(std::string("iterShapes: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("iterShapes");
+        throw;
     }
 }
 
 std::vector<int> OcctKernel::edgeToFaceMap(uint32_t id, int hashUpperBound) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        std::vector<int> result;
-        auto hashShape = [&](const TopoDS_Shape& s) -> int {
-            return static_cast<int>(TopTools_ShapeMapHasher{}(s) %
-                                    static_cast<size_t>(hashUpperBound));
-        };
-        for (TopExp_Explorer exE(shape, TopAbs_EDGE); exE.More(); exE.Next()) {
-            int edgeHash = hashShape(exE.Current());
-            std::vector<int> faceHashes;
-            for (TopExp_Explorer exF(shape, TopAbs_FACE); exF.More(); exF.Next()) {
-                for (TopExp_Explorer exFE(exF.Current(), TopAbs_EDGE); exFE.More(); exFE.Next()) {
-                    if (exFE.Current().IsSame(exE.Current())) {
-                        faceHashes.push_back(hashShape(exF.Current()));
-                        break;
+        auto result = [&]() -> std::vector<int> {
+            const auto& shape = get(id);
+            std::vector<int> result;
+            auto hashShape = [&](const TopoDS_Shape& s) -> int {
+                return static_cast<int>(TopTools_ShapeMapHasher{}(s) %
+                                        static_cast<size_t>(hashUpperBound));
+            };
+            for (TopExp_Explorer exE(shape, TopAbs_EDGE); exE.More(); exE.Next()) {
+                int edgeHash = hashShape(exE.Current());
+                std::vector<int> faceHashes;
+                for (TopExp_Explorer exF(shape, TopAbs_FACE); exF.More(); exF.Next()) {
+                    for (TopExp_Explorer exFE(exF.Current(), TopAbs_EDGE); exFE.More(); exFE.Next()) {
+                        if (exFE.Current().IsSame(exE.Current())) {
+                            faceHashes.push_back(hashShape(exF.Current()));
+                            break;
+                        }
                     }
                 }
+                if (!faceHashes.empty()) {
+                    result.push_back(edgeHash);
+                    result.push_back(static_cast<int>(faceHashes.size()));
+                    result.insert(result.end(), faceHashes.begin(), faceHashes.end());
+                }
             }
-            if (!faceHashes.empty()) {
-                result.push_back(edgeHash);
-                result.push_back(static_cast<int>(faceHashes.size()));
-                result.insert(result.end(), faceHashes.begin(), faceHashes.end());
-            }
-        }
+            return result;
+        }();
+        breakScope.throwIfBroke("edgeToFaceMap");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("edgeToFaceMap");
         throw std::runtime_error(std::string("edgeToFaceMap: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("edgeToFaceMap");
+        throw;
     }
 }
 
 uint32_t OcctKernel::downcast(uint32_t id, const std::string& targetType) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        auto parseType = [](const std::string& t) -> TopAbs_ShapeEnum {
-            if (t == "vertex") return TopAbs_VERTEX;
-            if (t == "edge") return TopAbs_EDGE;
-            if (t == "wire") return TopAbs_WIRE;
-            if (t == "face") return TopAbs_FACE;
-            if (t == "shell") return TopAbs_SHELL;
-            if (t == "solid") return TopAbs_SOLID;
-            if (t == "compsolid") return TopAbs_COMPSOLID;
-            if (t == "compound") return TopAbs_COMPOUND;
-            throw std::runtime_error("Unknown shape type: " + t);
-        };
-        TopAbs_ShapeEnum target = parseType(targetType);
-        if (shape.ShapeType() != target) {
-            throw std::runtime_error("downcast: shape type mismatch");
-        }
-        // The shape is already the requested type, so the cast is a pure identity.
-        // Return the existing id instead of storing a duplicate handle, sparing
-        // callers the post-downcast release() bookkeeping (see issue #205).
-        return id;
+        auto result = [&]() -> uint32_t {
+            const auto& shape = get(id);
+            auto parseType = [](const std::string& t) -> TopAbs_ShapeEnum {
+                if (t == "vertex") return TopAbs_VERTEX;
+                if (t == "edge") return TopAbs_EDGE;
+                if (t == "wire") return TopAbs_WIRE;
+                if (t == "face") return TopAbs_FACE;
+                if (t == "shell") return TopAbs_SHELL;
+                if (t == "solid") return TopAbs_SOLID;
+                if (t == "compsolid") return TopAbs_COMPSOLID;
+                if (t == "compound") return TopAbs_COMPOUND;
+                throw std::runtime_error("Unknown shape type: " + t);
+            };
+            TopAbs_ShapeEnum target = parseType(targetType);
+            if (shape.ShapeType() != target) {
+                throw std::runtime_error("downcast: shape type mismatch");
+            }
+            // The shape is already the requested type, so the cast is a pure identity.
+            // Return the existing id instead of storing a duplicate handle, sparing
+            // callers the post-downcast release() bookkeeping (see issue #205).
+            return id;
+        }();
+        breakScope.throwIfBroke("downcast");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("downcast");
         throw std::runtime_error(std::string("downcast: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("downcast");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::adjacentFaces(uint32_t shapeId, uint32_t faceId) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(shapeId);
-        const auto& targetFace = get(faceId);
-        std::vector<uint32_t> result;
-        
-        // Find faces that share an edge with targetFace
-        for (TopExp_Explorer exF(shape, TopAbs_FACE); exF.More(); exF.Next()) {
-            if (exF.Current().IsSame(targetFace))
-                continue;
-            bool adjacent = false;
-            for (TopExp_Explorer exE1(targetFace, TopAbs_EDGE); exE1.More() && !adjacent;
-                 exE1.Next()) {
-                for (TopExp_Explorer exE2(exF.Current(), TopAbs_EDGE); exE2.More(); exE2.Next()) {
-                    if (exE1.Current().IsSame(exE2.Current())) {
-                        adjacent = true;
-                        break;
+        auto result = [&]() -> std::vector<uint32_t> {
+            const auto& shape = get(shapeId);
+            const auto& targetFace = get(faceId);
+            std::vector<uint32_t> result;
+            
+            // Find faces that share an edge with targetFace
+            for (TopExp_Explorer exF(shape, TopAbs_FACE); exF.More(); exF.Next()) {
+                if (exF.Current().IsSame(targetFace))
+                    continue;
+                bool adjacent = false;
+                for (TopExp_Explorer exE1(targetFace, TopAbs_EDGE); exE1.More() && !adjacent;
+                     exE1.Next()) {
+                    for (TopExp_Explorer exE2(exF.Current(), TopAbs_EDGE); exE2.More(); exE2.Next()) {
+                        if (exE1.Current().IsSame(exE2.Current())) {
+                            adjacent = true;
+                            break;
+                        }
                     }
                 }
+                if (adjacent) {
+                    result.push_back(store(exF.Current()));
+                }
             }
-            if (adjacent) {
-                result.push_back(store(exF.Current()));
-            }
-        }
+            return result;
+        }();
+        breakScope.throwIfBroke("adjacentFaces");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("adjacentFaces");
         throw std::runtime_error(std::string("adjacentFaces: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("adjacentFaces");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::sharedEdges(uint32_t faceA, uint32_t faceB) {
+    BreakScope breakScope(*this);
     try {
-        const auto& fa = get(faceA);
-        const auto& fb = get(faceB);
-        std::vector<uint32_t> result;
-        for (TopExp_Explorer exA(fa, TopAbs_EDGE); exA.More(); exA.Next()) {
-            for (TopExp_Explorer exB(fb, TopAbs_EDGE); exB.More(); exB.Next()) {
-                if (exA.Current().IsSame(exB.Current())) {
-                    result.push_back(store(exA.Current()));
-                    break;
+        auto result = [&]() -> std::vector<uint32_t> {
+            const auto& fa = get(faceA);
+            const auto& fb = get(faceB);
+            std::vector<uint32_t> result;
+            for (TopExp_Explorer exA(fa, TopAbs_EDGE); exA.More(); exA.Next()) {
+                for (TopExp_Explorer exB(fb, TopAbs_EDGE); exB.More(); exB.Next()) {
+                    if (exA.Current().IsSame(exB.Current())) {
+                        result.push_back(store(exA.Current()));
+                        break;
+                    }
                 }
             }
-        }
+            return result;
+        }();
+        breakScope.throwIfBroke("sharedEdges");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("sharedEdges");
         throw std::runtime_error(std::string("sharedEdges: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("sharedEdges");
+        throw;
     }
 }

@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,646 +302,907 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === construction ===
 
 uint32_t OcctKernel::makeVertex(double x, double y, double z) {
+    BreakScope breakScope(*this);
     try {
-        BRepBuilderAPI_MakeVertex maker(gp_Pnt(x, y, z));
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepBuilderAPI_MakeVertex maker(gp_Pnt(x, y, z));
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeVertex");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeVertex");
         throw std::runtime_error(std::string("makeVertex: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeVertex");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeEdge(uint32_t v1, uint32_t v2) {
+    BreakScope breakScope(*this);
     try {
-        BRepBuilderAPI_MakeEdge maker(TopoDS::Vertex(get(v1)), TopoDS::Vertex(get(v2)));
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeEdge: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepBuilderAPI_MakeEdge maker(TopoDS::Vertex(get(v1)), TopoDS::Vertex(get(v2)));
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeEdge: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeEdge");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeEdge");
         throw std::runtime_error(std::string("makeEdge: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeEdge");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeWire(std::vector<uint32_t> edgeIds) {
+    BreakScope breakScope(*this);
     try {
-        BRepBuilderAPI_MakeWire maker;
-        for (uint32_t eid : edgeIds) {
-            maker.Add(TopoDS::Edge(get(eid)));
-            // If Add fails partway, try continuing — the wire may still be usable
-        }
-        if (maker.IsDone()) {
-            return store(maker.Shape());
-        }
-        // Fallback: try with increased tolerance via ShapeFix_Wire
-        // Build a wire from edges directly and let ShapeFix close gaps
-        BRep_Builder builder;
-        TopoDS_Wire rawWire;
-        builder.MakeWire(rawWire);
-        for (uint32_t eid : edgeIds) {
-            builder.Add(rawWire, TopoDS::Edge(get(eid)));
-        }
-        ShapeFix_Wire fixer(rawWire, TopoDS_Face(), 1e-3);
-        fixer.FixConnected();
-        fixer.FixReorder();
-        if (fixer.Wire().IsNull()) {
-            throw std::runtime_error("makeWire: construction failed (even with ShapeFix)");
-        }
-        return store(fixer.Wire());
+        auto result = [&]() -> uint32_t {
+            BRepBuilderAPI_MakeWire maker;
+            for (uint32_t eid : edgeIds) {
+                maker.Add(TopoDS::Edge(get(eid)));
+                // If Add fails partway, try continuing — the wire may still be usable
+            }
+            if (maker.IsDone()) {
+                return store(maker.Shape());
+            }
+            // Fallback: try with increased tolerance via ShapeFix_Wire
+            // Build a wire from edges directly and let ShapeFix close gaps
+            BRep_Builder builder;
+            TopoDS_Wire rawWire;
+            builder.MakeWire(rawWire);
+            for (uint32_t eid : edgeIds) {
+                builder.Add(rawWire, TopoDS::Edge(get(eid)));
+            }
+            ShapeFix_Wire fixer(rawWire, TopoDS_Face(), 1e-3);
+            fixer.FixConnected();
+            fixer.FixReorder();
+            if (fixer.Wire().IsNull()) {
+                throw std::runtime_error("makeWire: construction failed (even with ShapeFix)");
+            }
+            return store(fixer.Wire());
+        }();
+        breakScope.throwIfBroke("makeWire");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeWire");
         throw std::runtime_error(std::string("makeWire: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeWire");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeFace(uint32_t wireId) {
+    BreakScope breakScope(*this);
     try {
-        BRepBuilderAPI_MakeFace maker(TopoDS::Wire(get(wireId)));
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeFace: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepBuilderAPI_MakeFace maker(TopoDS::Wire(get(wireId)));
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeFace: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeFace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeFace");
         throw std::runtime_error(std::string("makeFace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeFace");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeFaceOnSurface(uint32_t faceId, uint32_t wireId) {
+    BreakScope breakScope(*this);
     try {
-        // Extract surface from existing face, build new face with wire on that surface
-        Handle(Geom_Surface) surface = BRep_Tool::Surface(TopoDS::Face(get(faceId)));
-        BRepBuilderAPI_MakeFace maker(surface, TopoDS::Wire(get(wireId)), true);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeFaceOnSurface: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            // Extract surface from existing face, build new face with wire on that surface
+            Handle(Geom_Surface) surface = BRep_Tool::Surface(TopoDS::Face(get(faceId)));
+            BRepBuilderAPI_MakeFace maker(surface, TopoDS::Wire(get(wireId)), true);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeFaceOnSurface: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeFaceOnSurface");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeFaceOnSurface");
         throw std::runtime_error(std::string("makeFaceOnSurface: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeFaceOnSurface");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeSolid(uint32_t shellId) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(shellId);
-        // If already a solid, return as-is
-        if (shape.ShapeType() == TopAbs_SOLID) {
-            return store(shape);
-        }
-        // If a compound, try to find a shell inside
-        if (shape.ShapeType() == TopAbs_COMPOUND) {
-            for (TopExp_Explorer ex(shape, TopAbs_SHELL); ex.More(); ex.Next()) {
-                BRepBuilderAPI_MakeSolid maker(TopoDS::Shell(ex.Current()));
-                if (maker.IsDone()) {
-                    return store(maker.Shape());
-                }
+        auto result = [&]() -> uint32_t {
+            const auto& shape = get(shellId);
+            // If already a solid, return as-is
+            if (shape.ShapeType() == TopAbs_SOLID) {
+                return store(shape);
             }
-            throw std::runtime_error("makeSolid: compound has no valid shell");
-        }
-        BRepBuilderAPI_MakeSolid maker(TopoDS::Shell(shape));
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeSolid: construction failed");
-        }
-        return store(maker.Shape());
+            // If a compound, try to find a shell inside
+            if (shape.ShapeType() == TopAbs_COMPOUND) {
+                for (TopExp_Explorer ex(shape, TopAbs_SHELL); ex.More(); ex.Next()) {
+                    BRepBuilderAPI_MakeSolid maker(TopoDS::Shell(ex.Current()));
+                    if (maker.IsDone()) {
+                        return store(maker.Shape());
+                    }
+                }
+                throw std::runtime_error("makeSolid: compound has no valid shell");
+            }
+            BRepBuilderAPI_MakeSolid maker(TopoDS::Shell(shape));
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeSolid: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeSolid");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeSolid");
         throw std::runtime_error(std::string("makeSolid: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeSolid");
+        throw;
     }
 }
 
 uint32_t OcctKernel::sew(std::vector<uint32_t> shapeIds, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        BRepBuilderAPI_Sewing sewer(tolerance);
-        for (uint32_t sid : shapeIds) {
-            sewer.Add(get(sid));
-        }
-        sewer.Perform();
-        return store(sewer.SewedShape());
+        auto result = [&]() -> uint32_t {
+            BRepBuilderAPI_Sewing sewer(tolerance);
+            for (uint32_t sid : shapeIds) {
+                sewer.Add(get(sid));
+            }
+            sewer.Perform();
+            return store(sewer.SewedShape());
+        }();
+        breakScope.throwIfBroke("sew");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("sew");
         throw std::runtime_error(std::string("sew: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("sew");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeCompound(std::vector<uint32_t> shapeIds) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Compound compound;
-        TopoDS_Builder builder;
-        builder.MakeCompound(compound);
-        for (uint32_t sid : shapeIds) {
-            builder.Add(compound, get(sid));
-        }
-        return store(compound);
+        auto result = [&]() -> uint32_t {
+            TopoDS_Compound compound;
+            TopoDS_Builder builder;
+            builder.MakeCompound(compound);
+            for (uint32_t sid : shapeIds) {
+                builder.Add(compound, get(sid));
+            }
+            return store(compound);
+        }();
+        breakScope.throwIfBroke("makeCompound");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeCompound");
         throw std::runtime_error(std::string("makeCompound: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeCompound");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeLineEdge(double x1, double y1, double z1, double x2, double y2, double z2) {
+    BreakScope breakScope(*this);
     try {
-        BRepBuilderAPI_MakeEdge maker(gp_Pnt(x1, y1, z1), gp_Pnt(x2, y2, z2));
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeLineEdge: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepBuilderAPI_MakeEdge maker(gp_Pnt(x1, y1, z1), gp_Pnt(x2, y2, z2));
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeLineEdge: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeLineEdge");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeLineEdge");
         throw std::runtime_error(std::string("makeLineEdge: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeLineEdge");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeCircleEdge(double cx, double cy, double cz, double nx, double ny, double nz, double radius) {
+    BreakScope breakScope(*this);
     try {
-        gp_Ax2 axis(gp_Pnt(cx, cy, cz), gp_Dir(nx, ny, nz));
-        gp_Circ circle(axis, radius);
-        BRepBuilderAPI_MakeEdge maker(circle);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeCircleEdge: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Ax2 axis(gp_Pnt(cx, cy, cz), gp_Dir(nx, ny, nz));
+            gp_Circ circle(axis, radius);
+            BRepBuilderAPI_MakeEdge maker(circle);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeCircleEdge: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeCircleEdge");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeCircleEdge");
         throw std::runtime_error(std::string("makeCircleEdge: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeCircleEdge");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeCircleArc(double cx, double cy, double cz, double nx, double ny, double nz, double radius, double startAngle, double endAngle) {
+    BreakScope breakScope(*this);
     try {
-        gp_Ax2 axis(gp_Pnt(cx, cy, cz), gp_Dir(nx, ny, nz));
-        gp_Circ circle(axis, radius);
-        Handle(Geom_TrimmedCurve) arc =
-            new Geom_TrimmedCurve(new Geom_Circle(circle), startAngle, endAngle);
-        BRepBuilderAPI_MakeEdge maker(arc);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeCircleArc: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Ax2 axis(gp_Pnt(cx, cy, cz), gp_Dir(nx, ny, nz));
+            gp_Circ circle(axis, radius);
+            Handle(Geom_TrimmedCurve) arc =
+                new Geom_TrimmedCurve(new Geom_Circle(circle), startAngle, endAngle);
+            BRepBuilderAPI_MakeEdge maker(arc);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeCircleArc: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeCircleArc");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeCircleArc");
         throw std::runtime_error(std::string("makeCircleArc: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeCircleArc");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeArcEdge(double x1, double y1, double z1, double x2, double y2, double z2, double x3, double y3, double z3) {
+    BreakScope breakScope(*this);
     try {
-        GC_MakeArcOfCircle arc(gp_Pnt(x1, y1, z1), gp_Pnt(x2, y2, z2), gp_Pnt(x3, y3, z3));
-        if (!arc.IsDone()) {
-            throw std::runtime_error("makeArcEdge: construction failed");
-        }
-        BRepBuilderAPI_MakeEdge maker(arc.Value());
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeArcEdge: edge construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            GC_MakeArcOfCircle arc(gp_Pnt(x1, y1, z1), gp_Pnt(x2, y2, z2), gp_Pnt(x3, y3, z3));
+            if (!arc.IsDone()) {
+                throw std::runtime_error("makeArcEdge: construction failed");
+            }
+            BRepBuilderAPI_MakeEdge maker(arc.Value());
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeArcEdge: edge construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeArcEdge");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeArcEdge");
         throw std::runtime_error(std::string("makeArcEdge: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeArcEdge");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeEllipseEdge(double cx, double cy, double cz, double nx, double ny, double nz, double majorRadius, double minorRadius) {
+    BreakScope breakScope(*this);
     try {
-        gp_Ax2 axis(gp_Pnt(cx, cy, cz), gp_Dir(nx, ny, nz));
-        gp_Elips ellipse(axis, majorRadius, minorRadius);
-        BRepBuilderAPI_MakeEdge maker(ellipse);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeEllipseEdge: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Ax2 axis(gp_Pnt(cx, cy, cz), gp_Dir(nx, ny, nz));
+            gp_Elips ellipse(axis, majorRadius, minorRadius);
+            BRepBuilderAPI_MakeEdge maker(ellipse);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeEllipseEdge: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeEllipseEdge");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeEllipseEdge");
         throw std::runtime_error(std::string("makeEllipseEdge: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeEllipseEdge");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeBezierEdge(std::vector<double> flatPoints) {
+    BreakScope breakScope(*this);
     try {
-        int nPts = static_cast<int>(flatPoints.size()) / 3;
-        if (nPts < 2) {
-            throw std::runtime_error("makeBezierEdge: need at least 2 points");
-        }
-        NCollection_Array1<gp_Pnt> poles(1, nPts);
-        for (int i = 0; i < nPts; i++) {
-            poles.SetValue(i + 1,
-                           gp_Pnt(flatPoints[i * 3], flatPoints[i * 3 + 1], flatPoints[i * 3 + 2]));
-        }
-        Handle(Geom_BezierCurve) curve = new Geom_BezierCurve(poles);
-        BRepBuilderAPI_MakeEdge maker(curve);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeBezierEdge: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            int nPts = static_cast<int>(flatPoints.size()) / 3;
+            if (nPts < 2) {
+                throw std::runtime_error("makeBezierEdge: need at least 2 points");
+            }
+            NCollection_Array1<gp_Pnt> poles(1, nPts);
+            for (int i = 0; i < nPts; i++) {
+                poles.SetValue(i + 1,
+                               gp_Pnt(flatPoints[i * 3], flatPoints[i * 3 + 1], flatPoints[i * 3 + 2]));
+            }
+            Handle(Geom_BezierCurve) curve = new Geom_BezierCurve(poles);
+            BRepBuilderAPI_MakeEdge maker(curve);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeBezierEdge: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeBezierEdge");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeBezierEdge");
         throw std::runtime_error(std::string("makeBezierEdge: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeBezierEdge");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeBSplineEdge(std::vector<double> poles, std::vector<double> weights, std::vector<double> knots, std::vector<int> multiplicities, int degree, bool periodic) {
+    BreakScope breakScope(*this);
     try {
-        int nPoles = static_cast<int>(poles.size()) / 3;
-        if (nPoles < 2) {
-            throw std::runtime_error("makeBSplineEdge: need at least 2 poles");
-        }
-        int nKnots = static_cast<int>(knots.size());
-        if (nKnots < 2 || static_cast<int>(multiplicities.size()) != nKnots) {
-            throw std::runtime_error("makeBSplineEdge: knots and multiplicities must be the same non-trivial length");
-        }
-        if (!weights.empty() && static_cast<int>(weights.size()) != nPoles) {
-            throw std::runtime_error("makeBSplineEdge: weights length must match pole count");
-        }
-        NCollection_Array1<gp_Pnt> polesArr(1, nPoles);
-        for (int i = 0; i < nPoles; i++) {
-            polesArr.SetValue(i + 1, gp_Pnt(poles[i * 3], poles[i * 3 + 1], poles[i * 3 + 2]));
-        }
-        NCollection_Array1<double> knotsArr(1, nKnots);
-        NCollection_Array1<int> multsArr(1, nKnots);
-        for (int i = 0; i < nKnots; i++) {
-            knotsArr.SetValue(i + 1, knots[i]);
-            multsArr.SetValue(i + 1, multiplicities[i]);
-        }
-        bool rational = false;
-        for (double w : weights) {
-            if (std::abs(w - 1.0) > Precision::Confusion()) {
-                rational = true;
-                break;
+        auto result = [&]() -> uint32_t {
+            int nPoles = static_cast<int>(poles.size()) / 3;
+            if (nPoles < 2) {
+                throw std::runtime_error("makeBSplineEdge: need at least 2 poles");
             }
-        }
-        Handle(Geom_BSplineCurve) curve;
-        if (rational) {
-            NCollection_Array1<double> weightsArr(1, nPoles);
+            int nKnots = static_cast<int>(knots.size());
+            if (nKnots < 2 || static_cast<int>(multiplicities.size()) != nKnots) {
+                throw std::runtime_error("makeBSplineEdge: knots and multiplicities must be the same non-trivial length");
+            }
+            if (!weights.empty() && static_cast<int>(weights.size()) != nPoles) {
+                throw std::runtime_error("makeBSplineEdge: weights length must match pole count");
+            }
+            NCollection_Array1<gp_Pnt> polesArr(1, nPoles);
             for (int i = 0; i < nPoles; i++) {
-                weightsArr.SetValue(i + 1, weights[i]);
+                polesArr.SetValue(i + 1, gp_Pnt(poles[i * 3], poles[i * 3 + 1], poles[i * 3 + 2]));
             }
-            curve = new Geom_BSplineCurve(polesArr, weightsArr, knotsArr, multsArr, degree, periodic);
-        } else {
-            curve = new Geom_BSplineCurve(polesArr, knotsArr, multsArr, degree, periodic);
-        }
-        BRepBuilderAPI_MakeEdge maker(curve);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeBSplineEdge: edge construction failed");
-        }
-        return store(maker.Shape());
+            NCollection_Array1<double> knotsArr(1, nKnots);
+            NCollection_Array1<int> multsArr(1, nKnots);
+            for (int i = 0; i < nKnots; i++) {
+                knotsArr.SetValue(i + 1, knots[i]);
+                multsArr.SetValue(i + 1, multiplicities[i]);
+            }
+            bool rational = false;
+            for (double w : weights) {
+                if (std::abs(w - 1.0) > Precision::Confusion()) {
+                    rational = true;
+                    break;
+                }
+            }
+            Handle(Geom_BSplineCurve) curve;
+            if (rational) {
+                NCollection_Array1<double> weightsArr(1, nPoles);
+                for (int i = 0; i < nPoles; i++) {
+                    weightsArr.SetValue(i + 1, weights[i]);
+                }
+                curve = new Geom_BSplineCurve(polesArr, weightsArr, knotsArr, multsArr, degree, periodic);
+            } else {
+                curve = new Geom_BSplineCurve(polesArr, knotsArr, multsArr, degree, periodic);
+            }
+            BRepBuilderAPI_MakeEdge maker(curve);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeBSplineEdge: edge construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeBSplineEdge");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeBSplineEdge");
         throw std::runtime_error(std::string("makeBSplineEdge: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeBSplineEdge");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeEllipseArc(double cx, double cy, double cz, double nx, double ny, double nz, double majorRadius, double minorRadius, double startAngle, double endAngle) {
+    BreakScope breakScope(*this);
     try {
-        gp_Ax2 axis(gp_Pnt(cx, cy, cz), gp_Dir(nx, ny, nz));
-        gp_Elips ellipse(axis, majorRadius, minorRadius);
-        Handle(Geom_TrimmedCurve) arc =
-            new Geom_TrimmedCurve(new Geom_Ellipse(ellipse), startAngle, endAngle);
-        BRepBuilderAPI_MakeEdge maker(arc);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeEllipseArc: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Ax2 axis(gp_Pnt(cx, cy, cz), gp_Dir(nx, ny, nz));
+            gp_Elips ellipse(axis, majorRadius, minorRadius);
+            Handle(Geom_TrimmedCurve) arc =
+                new Geom_TrimmedCurve(new Geom_Ellipse(ellipse), startAngle, endAngle);
+            BRepBuilderAPI_MakeEdge maker(arc);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeEllipseArc: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeEllipseArc");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeEllipseArc");
         throw std::runtime_error(std::string("makeEllipseArc: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeEllipseArc");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeHelixWire(double px, double py, double pz, double dx, double dy, double dz, double pitch, double height, double radius) {
+    BreakScope breakScope(*this);
     try {
-        gp_Ax3 ax3(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz));
-        Handle(Geom_CylindricalSurface) cylinder = new Geom_CylindricalSurface(ax3, radius);
-        
-        // A helix on a cylindrical surface is a 2D line: u = t, v = pitch/(2*pi) * t
-        double slope = pitch / (2.0 * M_PI);
-        double nTurns = height / pitch;
-        // gp_Dir2d normalizes (1, slope) to unit length, so advancing the edge
-        // parameter by t moves only t / sqrt(1 + slope^2) along u (the angle). Scale
-        // the parameter range by that length so the edge actually sweeps nTurns full
-        // turns and the full height instead of falling short.
-        double dirLen = std::sqrt(1.0 + slope * slope);
-        double uMax = nTurns * 2.0 * M_PI * dirLen;
-        
-        Handle(Geom2d_Line) line2d = new Geom2d_Line(gp_Pnt2d(0, 0), gp_Dir2d(1, slope));
-        
-        BRepBuilderAPI_MakeEdge edgeMaker(line2d, cylinder, 0.0, uMax);
-        if (!edgeMaker.IsDone()) {
-            throw std::runtime_error("makeHelixWire: edge construction failed");
-        }
-        BRepBuilderAPI_MakeWire wireMaker(edgeMaker.Edge());
-        if (!wireMaker.IsDone()) {
-            throw std::runtime_error("makeHelixWire: wire construction failed");
-        }
-        // The edge carries only the pcurve on the cylinder. Algorithms that read the
-        // 3D curve — sweeps above all — fail outright without this, and MaxSegment
-        // has to clear 30 for the approximation of a multi-turn helix to converge.
-        TopoDS_Shape wire = wireMaker.Shape();
-        if (!BRepLib::BuildCurves3d(wire, 1.0e-6, GeomAbs_C1, 14, 2000)) {
-            throw std::runtime_error("makeHelixWire: 3D curve approximation failed");
-        }
-        return store(wire);
+        auto result = [&]() -> uint32_t {
+            gp_Ax3 ax3(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz));
+            Handle(Geom_CylindricalSurface) cylinder = new Geom_CylindricalSurface(ax3, radius);
+            
+            // A helix on a cylindrical surface is a 2D line: u = t, v = pitch/(2*pi) * t
+            double slope = pitch / (2.0 * M_PI);
+            double nTurns = height / pitch;
+            // gp_Dir2d normalizes (1, slope) to unit length, so advancing the edge
+            // parameter by t moves only t / sqrt(1 + slope^2) along u (the angle). Scale
+            // the parameter range by that length so the edge actually sweeps nTurns full
+            // turns and the full height instead of falling short.
+            double dirLen = std::sqrt(1.0 + slope * slope);
+            double uMax = nTurns * 2.0 * M_PI * dirLen;
+            
+            Handle(Geom2d_Line) line2d = new Geom2d_Line(gp_Pnt2d(0, 0), gp_Dir2d(1, slope));
+            
+            BRepBuilderAPI_MakeEdge edgeMaker(line2d, cylinder, 0.0, uMax);
+            if (!edgeMaker.IsDone()) {
+                throw std::runtime_error("makeHelixWire: edge construction failed");
+            }
+            BRepBuilderAPI_MakeWire wireMaker(edgeMaker.Edge());
+            if (!wireMaker.IsDone()) {
+                throw std::runtime_error("makeHelixWire: wire construction failed");
+            }
+            // The edge carries only the pcurve on the cylinder. Algorithms that read the
+            // 3D curve — sweeps above all — fail outright without this, and MaxSegment
+            // has to clear 30 for the approximation of a multi-turn helix to converge.
+            TopoDS_Shape wire = wireMaker.Shape();
+            if (!BRepLib::BuildCurves3d(wire, 1.0e-6, GeomAbs_C1, 14, 2000)) {
+                throw std::runtime_error("makeHelixWire: 3D curve approximation failed");
+            }
+            return store(wire);
+        }();
+        breakScope.throwIfBroke("makeHelixWire");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeHelixWire");
         throw std::runtime_error(std::string("makeHelixWire: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeHelixWire");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeHelixWireHanded(double px, double py, double pz, double dx, double dy, double dz, double pitch, double height, double radius, bool leftHanded) {
+    BreakScope breakScope(*this);
     try {
-        gp_Ax3 ax3(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz));
-        Handle(Geom_CylindricalSurface) cylinder = new Geom_CylindricalSurface(ax3, radius);
-        
-        // A helix on a cylindrical surface is a 2D line: u = t, v = pitch/(2*pi) * t
-        double slope = pitch / (2.0 * M_PI);
-        double nTurns = height / pitch;
-        // gp_Dir2d normalizes (+/-1, slope) to unit length, so advancing the edge
-        // parameter by t moves only t / sqrt(1 + slope^2) along u (the angle). Scale
-        // the parameter range by that length so the edge actually sweeps nTurns full
-        // turns and the full height instead of falling short.
-        double dirLen = std::sqrt(1.0 + slope * slope);
-        double uMax = nTurns * 2.0 * M_PI * dirLen;
-        
-        Handle(Geom2d_Line) line2d =
-            new Geom2d_Line(gp_Pnt2d(0, 0), gp_Dir2d(leftHanded ? -1.0 : 1.0, slope));
-        
-        BRepBuilderAPI_MakeEdge edgeMaker(line2d, cylinder, 0.0, uMax);
-        if (!edgeMaker.IsDone()) {
-            throw std::runtime_error("makeHelixWireHanded: edge construction failed");
-        }
-        BRepBuilderAPI_MakeWire wireMaker(edgeMaker.Edge());
-        if (!wireMaker.IsDone()) {
-            throw std::runtime_error("makeHelixWireHanded: wire construction failed");
-        }
-        TopoDS_Shape wire = wireMaker.Shape();
-        if (!BRepLib::BuildCurves3d(wire, 1.0e-6, GeomAbs_C1, 14, 2000)) {
-            throw std::runtime_error("makeHelixWireHanded: 3D curve approximation failed");
-        }
-        return store(wire);
+        auto result = [&]() -> uint32_t {
+            gp_Ax3 ax3(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz));
+            Handle(Geom_CylindricalSurface) cylinder = new Geom_CylindricalSurface(ax3, radius);
+            
+            // A helix on a cylindrical surface is a 2D line: u = t, v = pitch/(2*pi) * t
+            double slope = pitch / (2.0 * M_PI);
+            double nTurns = height / pitch;
+            // gp_Dir2d normalizes (+/-1, slope) to unit length, so advancing the edge
+            // parameter by t moves only t / sqrt(1 + slope^2) along u (the angle). Scale
+            // the parameter range by that length so the edge actually sweeps nTurns full
+            // turns and the full height instead of falling short.
+            double dirLen = std::sqrt(1.0 + slope * slope);
+            double uMax = nTurns * 2.0 * M_PI * dirLen;
+            
+            Handle(Geom2d_Line) line2d =
+                new Geom2d_Line(gp_Pnt2d(0, 0), gp_Dir2d(leftHanded ? -1.0 : 1.0, slope));
+            
+            BRepBuilderAPI_MakeEdge edgeMaker(line2d, cylinder, 0.0, uMax);
+            if (!edgeMaker.IsDone()) {
+                throw std::runtime_error("makeHelixWireHanded: edge construction failed");
+            }
+            BRepBuilderAPI_MakeWire wireMaker(edgeMaker.Edge());
+            if (!wireMaker.IsDone()) {
+                throw std::runtime_error("makeHelixWireHanded: wire construction failed");
+            }
+            TopoDS_Shape wire = wireMaker.Shape();
+            if (!BRepLib::BuildCurves3d(wire, 1.0e-6, GeomAbs_C1, 14, 2000)) {
+                throw std::runtime_error("makeHelixWireHanded: 3D curve approximation failed");
+            }
+            return store(wire);
+        }();
+        breakScope.throwIfBroke("makeHelixWireHanded");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeHelixWireHanded");
         throw std::runtime_error(std::string("makeHelixWireHanded: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeHelixWireHanded");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeConicalHelixWire(double px, double py, double pz, double dx, double dy, double dz, double pitch, double height, double radius, double semiAngle, bool leftHanded) {
+    BreakScope breakScope(*this);
     try {
-        if (!(std::abs(semiAngle) > 1.0e-9) || !(std::abs(semiAngle) < M_PI / 2.0)) {
-            throw std::runtime_error("makeConicalHelixWire: the semi-angle must be between 0 and pi/2, not 0");
-        }
-        if (!(radius > 0.0) || !(radius + height * std::tan(semiAngle) > 0.0)) {
-            throw std::runtime_error("makeConicalHelixWire: the cone reaches its apex inside the helix");
-        }
-        gp_Ax3 ax3(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz));
-        Handle(Geom_ConicalSurface) cone = new Geom_ConicalSurface(ax3, semiAngle, radius);
-        
-        // The cone is P(u, v) = O + (radius + v sin a)(cos u X + sin u Y) + v cos a Z,
-        // thus v runs along the slant. A climb of `pitch` along the axis per turn is a
-        // line in (u, v) of slope pitch / (2 pi cos a).
-        double slope = pitch / (2.0 * M_PI * std::cos(semiAngle));
-        double nTurns = height / pitch;
-        // gp_Dir2d normalizes the direction, so scale the parameter range by its length.
-        double dirLen = std::sqrt(1.0 + slope * slope);
-        double uMax = nTurns * 2.0 * M_PI * dirLen;
-        
-        Handle(Geom2d_Line) line2d =
-            new Geom2d_Line(gp_Pnt2d(0, 0), gp_Dir2d(leftHanded ? -1.0 : 1.0, slope));
-        
-        BRepBuilderAPI_MakeEdge edgeMaker(line2d, cone, 0.0, uMax);
-        if (!edgeMaker.IsDone()) {
-            throw std::runtime_error("makeConicalHelixWire: edge construction failed");
-        }
-        BRepBuilderAPI_MakeWire wireMaker(edgeMaker.Edge());
-        if (!wireMaker.IsDone()) {
-            throw std::runtime_error("makeConicalHelixWire: wire construction failed");
-        }
-        TopoDS_Shape wire = wireMaker.Shape();
-        if (!BRepLib::BuildCurves3d(wire, 1.0e-6, GeomAbs_C1, 14, 2000)) {
-            throw std::runtime_error("makeConicalHelixWire: 3D curve approximation failed");
-        }
-        return store(wire);
+        auto result = [&]() -> uint32_t {
+            if (!(std::abs(semiAngle) > 1.0e-9) || !(std::abs(semiAngle) < M_PI / 2.0)) {
+                throw std::runtime_error("makeConicalHelixWire: the semi-angle must be between 0 and pi/2, not 0");
+            }
+            if (!(radius > 0.0) || !(radius + height * std::tan(semiAngle) > 0.0)) {
+                throw std::runtime_error("makeConicalHelixWire: the cone reaches its apex inside the helix");
+            }
+            gp_Ax3 ax3(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz));
+            Handle(Geom_ConicalSurface) cone = new Geom_ConicalSurface(ax3, semiAngle, radius);
+            
+            // The cone is P(u, v) = O + (radius + v sin a)(cos u X + sin u Y) + v cos a Z,
+            // thus v runs along the slant. A climb of `pitch` along the axis per turn is a
+            // line in (u, v) of slope pitch / (2 pi cos a).
+            double slope = pitch / (2.0 * M_PI * std::cos(semiAngle));
+            double nTurns = height / pitch;
+            // gp_Dir2d normalizes the direction, so scale the parameter range by its length.
+            double dirLen = std::sqrt(1.0 + slope * slope);
+            double uMax = nTurns * 2.0 * M_PI * dirLen;
+            
+            Handle(Geom2d_Line) line2d =
+                new Geom2d_Line(gp_Pnt2d(0, 0), gp_Dir2d(leftHanded ? -1.0 : 1.0, slope));
+            
+            BRepBuilderAPI_MakeEdge edgeMaker(line2d, cone, 0.0, uMax);
+            if (!edgeMaker.IsDone()) {
+                throw std::runtime_error("makeConicalHelixWire: edge construction failed");
+            }
+            BRepBuilderAPI_MakeWire wireMaker(edgeMaker.Edge());
+            if (!wireMaker.IsDone()) {
+                throw std::runtime_error("makeConicalHelixWire: wire construction failed");
+            }
+            TopoDS_Shape wire = wireMaker.Shape();
+            if (!BRepLib::BuildCurves3d(wire, 1.0e-6, GeomAbs_C1, 14, 2000)) {
+                throw std::runtime_error("makeConicalHelixWire: 3D curve approximation failed");
+            }
+            return store(wire);
+        }();
+        breakScope.throwIfBroke("makeConicalHelixWire");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeConicalHelixWire");
         throw std::runtime_error(std::string("makeConicalHelixWire: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeConicalHelixWire");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeNonPlanarFace(uint32_t wireId) {
+    BreakScope breakScope(*this);
     try {
-        BRepOffsetAPI_MakeFilling filler;
-        for (TopExp_Explorer ex(get(wireId), TopAbs_EDGE); ex.More(); ex.Next()) {
-            filler.Add(TopoDS::Edge(ex.Current()), GeomAbs_C0);
-        }
-        filler.Build();
-        if (!filler.IsDone()) {
-            throw std::runtime_error("makeNonPlanarFace: construction failed");
-        }
-        return store(filler.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepOffsetAPI_MakeFilling filler;
+            for (TopExp_Explorer ex(get(wireId), TopAbs_EDGE); ex.More(); ex.Next()) {
+                filler.Add(TopoDS::Edge(ex.Current()), GeomAbs_C0);
+            }
+            filler.Build();
+            if (!filler.IsDone()) {
+                throw std::runtime_error("makeNonPlanarFace: construction failed");
+            }
+            return store(filler.Shape());
+        }();
+        breakScope.throwIfBroke("makeNonPlanarFace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeNonPlanarFace");
         throw std::runtime_error(std::string("makeNonPlanarFace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeNonPlanarFace");
+        throw;
     }
 }
 
 uint32_t OcctKernel::addHolesInFace(uint32_t faceId, std::vector<uint32_t> holeWireIds) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Face face = TopoDS::Face(get(faceId));
-        BRepBuilderAPI_MakeFace maker(face);
-        for (uint32_t wid : holeWireIds) {
-            maker.Add(TopoDS::Wire(get(wid)));
-        }
-        if (!maker.IsDone()) {
-            throw std::runtime_error("addHolesInFace: construction failed");
-        }
-        // Add holes as-is, then let ShapeFix_Face classify the outer boundary by
-        // area and orient each inner wire opposite to it. The old unconditional
-        // hole.Reverse() produced a mis-oriented (invalid) face whenever a hole did
-        // not arrive same-wound as the outer -- exactly the case for font glyph
-        // counters (8, O, A) -- leaving the extruded solid invalid so a fuse/cut
-        // (e.g. embossed text) failed.
-        ShapeFix_Face fixer(TopoDS::Face(maker.Shape()));
-        fixer.FixOrientation();
-        fixer.Perform();
-        return store(fixer.Face());
+        auto result = [&]() -> uint32_t {
+            TopoDS_Face face = TopoDS::Face(get(faceId));
+            BRepBuilderAPI_MakeFace maker(face);
+            for (uint32_t wid : holeWireIds) {
+                maker.Add(TopoDS::Wire(get(wid)));
+            }
+            if (!maker.IsDone()) {
+                throw std::runtime_error("addHolesInFace: construction failed");
+            }
+            // Add holes as-is, then let ShapeFix_Face classify the outer boundary by
+            // area and orient each inner wire opposite to it. The old unconditional
+            // hole.Reverse() produced a mis-oriented (invalid) face whenever a hole did
+            // not arrive same-wound as the outer -- exactly the case for font glyph
+            // counters (8, O, A) -- leaving the extruded solid invalid so a fuse/cut
+            // (e.g. embossed text) failed.
+            ShapeFix_Face fixer(TopoDS::Face(maker.Shape()));
+            fixer.FixOrientation();
+            fixer.Perform();
+            return store(fixer.Face());
+        }();
+        breakScope.throwIfBroke("addHolesInFace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("addHolesInFace");
         throw std::runtime_error(std::string("addHolesInFace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("addHolesInFace");
+        throw;
     }
 }
 
 uint32_t OcctKernel::removeHolesFromFace(uint32_t faceId, std::vector<int> holeIndices) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Face face = TopoDS::Face(get(faceId));
-        // Collect inner wires (all wires except the outer wire)
-        TopoDS_Wire outer = ShapeAnalysis::OuterWire(face);
-        std::vector<TopoDS_Wire> innerWires;
-        for (TopExp_Explorer ex(face, TopAbs_WIRE); ex.More(); ex.Next()) {
-            TopoDS_Wire w = TopoDS::Wire(ex.Current());
-            if (!w.IsSame(outer)) {
-                innerWires.push_back(w);
+        auto result = [&]() -> uint32_t {
+            TopoDS_Face face = TopoDS::Face(get(faceId));
+            // Collect inner wires (all wires except the outer wire)
+            TopoDS_Wire outer = ShapeAnalysis::OuterWire(face);
+            std::vector<TopoDS_Wire> innerWires;
+            for (TopExp_Explorer ex(face, TopAbs_WIRE); ex.More(); ex.Next()) {
+                TopoDS_Wire w = TopoDS::Wire(ex.Current());
+                if (!w.IsSame(outer)) {
+                    innerWires.push_back(w);
+                }
             }
-        }
-        // Build set of indices to remove
-        std::set<int> removeSet(holeIndices.begin(), holeIndices.end());
-        // Rebuild face: start from outer wire on the same surface
-        Handle(Geom_Surface) geomSurf = BRep_Tool::Surface(face);
-        BRepBuilderAPI_MakeFace maker(geomSurf, outer, true);
-        for (int i = 0; i < static_cast<int>(innerWires.size()); i++) {
-            if (removeSet.find(i) == removeSet.end()) {
-                maker.Add(innerWires[i]);
+            // Build set of indices to remove
+            std::set<int> removeSet(holeIndices.begin(), holeIndices.end());
+            // Rebuild face: start from outer wire on the same surface
+            Handle(Geom_Surface) geomSurf = BRep_Tool::Surface(face);
+            BRepBuilderAPI_MakeFace maker(geomSurf, outer, true);
+            for (int i = 0; i < static_cast<int>(innerWires.size()); i++) {
+                if (removeSet.find(i) == removeSet.end()) {
+                    maker.Add(innerWires[i]);
+                }
             }
-        }
-        if (!maker.IsDone()) {
-            throw std::runtime_error("removeHolesFromFace: construction failed");
-        }
-        return store(maker.Shape());
+            if (!maker.IsDone()) {
+                throw std::runtime_error("removeHolesFromFace: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("removeHolesFromFace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("removeHolesFromFace");
         throw std::runtime_error(std::string("removeHolesFromFace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("removeHolesFromFace");
+        throw;
     }
 }
 
 uint32_t OcctKernel::solidFromShell(uint32_t shellId) {
+    BreakScope breakScope(*this);
     try {
-        return makeSolid(shellId);
+        auto result = [&]() -> uint32_t {
+            return makeSolid(shellId);
+        }();
+        breakScope.throwIfBroke("solidFromShell");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("solidFromShell");
         throw std::runtime_error(std::string("solidFromShell: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("solidFromShell");
+        throw;
     }
 }
 
 uint32_t OcctKernel::buildSolidFromFaces(std::vector<uint32_t> faceIds, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        return sewAndSolidify(faceIds, tolerance);
+        auto result = [&]() -> uint32_t {
+            return sewAndSolidify(faceIds, tolerance);
+        }();
+        breakScope.throwIfBroke("buildSolidFromFaces");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("buildSolidFromFaces");
         throw std::runtime_error(std::string("buildSolidFromFaces: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("buildSolidFromFaces");
+        throw;
     }
 }
 
 uint32_t OcctKernel::sewAndSolidify(std::vector<uint32_t> faceIds, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        BRepBuilderAPI_Sewing sewer(tolerance);
-        for (uint32_t fid : faceIds) {
-            sewer.Add(get(fid));
-        }
-        sewer.Perform();
-        if (recording()) {
-            // The sew makes each face and edge that it joins again, and says which.
-            Handle(BRepTools_History) history = new BRepTools_History();
-            NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> shapes;
+        auto result = [&]() -> uint32_t {
+            BRepBuilderAPI_Sewing sewer(tolerance);
             for (uint32_t fid : faceIds) {
-                TopExp::MapShapes(get(fid), TopAbs_FACE, shapes);
-                TopExp::MapShapes(get(fid), TopAbs_EDGE, shapes);
+                sewer.Add(get(fid));
             }
-            for (int i = 1; i <= shapes.Extent(); ++i) {
-                const TopoDS_Shape& shape = shapes(i);
-                TopoDS_Shape image;
-                if (sewer.IsModified(shape)) image = sewer.Modified(shape);
-                else if (sewer.IsModifiedSubShape(shape)) image = sewer.ModifiedSubShape(shape);
-                if (!image.IsNull() && !image.IsSame(shape)) history->AddModified(shape, image);
+            sewer.Perform();
+            if (recording()) {
+                // The sew makes each face and edge that it joins again, and says which.
+                Handle(BRepTools_History) history = new BRepTools_History();
+                NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> shapes;
+                for (uint32_t fid : faceIds) {
+                    TopExp::MapShapes(get(fid), TopAbs_FACE, shapes);
+                    TopExp::MapShapes(get(fid), TopAbs_EDGE, shapes);
+                }
+                for (int i = 1; i <= shapes.Extent(); ++i) {
+                    const TopoDS_Shape& shape = shapes(i);
+                    TopoDS_Shape image;
+                    if (sewer.IsModified(shape)) image = sewer.Modified(shape);
+                    else if (sewer.IsModifiedSubShape(shape)) image = sewer.ModifiedSubShape(shape);
+                    if (!image.IsNull() && !image.IsSame(shape)) history->AddModified(shape, image);
+                }
+                record(history);
             }
-            record(history);
-        }
-        TopoDS_Shape sewn = sewer.SewedShape();
-        // Try to make a solid from the sewn shell
-        if (sewn.ShapeType() == TopAbs_SHELL) {
-            BRepBuilderAPI_MakeSolid maker(TopoDS::Shell(sewn));
-            if (maker.IsDone()) {
-                return store(maker.Shape());
+            TopoDS_Shape sewn = sewer.SewedShape();
+            // Try to make a solid from the sewn shell
+            if (sewn.ShapeType() == TopAbs_SHELL) {
+                BRepBuilderAPI_MakeSolid maker(TopoDS::Shell(sewn));
+                if (maker.IsDone()) {
+                    return store(maker.Shape());
+                }
             }
-        }
-        return store(sewn);
+            return store(sewn);
+        }();
+        breakScope.throwIfBroke("sewAndSolidify");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("sewAndSolidify");
         throw std::runtime_error(std::string("sewAndSolidify: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("sewAndSolidify");
+        throw;
     }
 }
 
 uint32_t OcctKernel::buildTriFace(double ax, double ay, double az, double bx, double by, double bz, double cx2, double cy2, double cz2) {
+    BreakScope breakScope(*this);
     try {
-        gp_Pnt pa(ax, ay, az), pb(bx, by, bz), pc(cx2, cy2, cz2);
-        BRepBuilderAPI_MakeWire wireMaker;
-        wireMaker.Add(BRepBuilderAPI_MakeEdge(pa, pb).Edge());
-        wireMaker.Add(BRepBuilderAPI_MakeEdge(pb, pc).Edge());
-        wireMaker.Add(BRepBuilderAPI_MakeEdge(pc, pa).Edge());
-        if (!wireMaker.IsDone()) {
-            throw std::runtime_error("buildTriFace: wire construction failed");
-        }
-        BRepBuilderAPI_MakeFace faceMaker(wireMaker.Wire());
-        if (!faceMaker.IsDone()) {
-            throw std::runtime_error("buildTriFace: face construction failed");
-        }
-        return store(faceMaker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Pnt pa(ax, ay, az), pb(bx, by, bz), pc(cx2, cy2, cz2);
+            BRepBuilderAPI_MakeWire wireMaker;
+            wireMaker.Add(BRepBuilderAPI_MakeEdge(pa, pb).Edge());
+            wireMaker.Add(BRepBuilderAPI_MakeEdge(pb, pc).Edge());
+            wireMaker.Add(BRepBuilderAPI_MakeEdge(pc, pa).Edge());
+            if (!wireMaker.IsDone()) {
+                throw std::runtime_error("buildTriFace: wire construction failed");
+            }
+            BRepBuilderAPI_MakeFace faceMaker(wireMaker.Wire());
+            if (!faceMaker.IsDone()) {
+                throw std::runtime_error("buildTriFace: face construction failed");
+            }
+            return store(faceMaker.Shape());
+        }();
+        breakScope.throwIfBroke("buildTriFace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("buildTriFace");
         throw std::runtime_error(std::string("buildTriFace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("buildTriFace");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeTangentArc(double x1, double y1, double z1, double tx, double ty, double tz, double x2, double y2, double z2) {
+    BreakScope breakScope(*this);
     try {
-        gp_Pnt startPt(x1, y1, z1);
-        gp_Vec tangent(tx, ty, tz);
-        gp_Pnt endPt(x2, y2, z2);
-        
-        GC_MakeArcOfCircle arcMaker(startPt, tangent, endPt);
-        if (!arcMaker.IsDone()) {
-            throw std::runtime_error("makeTangentArc: arc construction failed");
-        }
-        
-        BRepBuilderAPI_MakeEdge edgeMaker(arcMaker.Value());
-        if (!edgeMaker.IsDone()) {
-            throw std::runtime_error("makeTangentArc: edge construction failed");
-        }
-        return store(edgeMaker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Pnt startPt(x1, y1, z1);
+            gp_Vec tangent(tx, ty, tz);
+            gp_Pnt endPt(x2, y2, z2);
+            
+            GC_MakeArcOfCircle arcMaker(startPt, tangent, endPt);
+            if (!arcMaker.IsDone()) {
+                throw std::runtime_error("makeTangentArc: arc construction failed");
+            }
+            
+            BRepBuilderAPI_MakeEdge edgeMaker(arcMaker.Value());
+            if (!edgeMaker.IsDone()) {
+                throw std::runtime_error("makeTangentArc: edge construction failed");
+            }
+            return store(edgeMaker.Shape());
+        }();
+        breakScope.throwIfBroke("makeTangentArc");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeTangentArc");
         throw std::runtime_error(std::string("makeTangentArc: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeTangentArc");
+        throw;
     }
 }
 
 uint32_t OcctKernel::bsplineSurface(std::vector<double> flatPoints, int rows, int cols) {
+    BreakScope breakScope(*this);
     try {
-        if (rows < 2 || cols < 2) {
-            throw std::runtime_error("bsplineSurface: need at least 2x2 grid");
-        }
-        int nPts = static_cast<int>(flatPoints.size()) / 3;
-        if (nPts != rows * cols) {
-            throw std::runtime_error("bsplineSurface: point count mismatch");
-        }
-        
-        // Build a 2D array of gp_Pnt (1-based indexing)
-        NCollection_Array2<gp_Pnt> points(1, rows, 1, cols);
-        for (int r = 0; r < rows; r++) {
-            for (int c = 0; c < cols; c++) {
-                int idx = (r * cols + c) * 3;
-                points.SetValue(r + 1, c + 1,
-                                gp_Pnt(flatPoints[idx], flatPoints[idx + 1], flatPoints[idx + 2]));
+        auto result = [&]() -> uint32_t {
+            if (rows < 2 || cols < 2) {
+                throw std::runtime_error("bsplineSurface: need at least 2x2 grid");
             }
-        }
-        
-        GeomAPI_PointsToBSplineSurface approx(points, 3, 8, GeomAbs_C2, 1e-3);
-        if (!approx.IsDone()) {
-            throw std::runtime_error("bsplineSurface: approximation failed");
-        }
-        
-        BRepBuilderAPI_MakeFace faceMaker(approx.Surface(), 1e-3);
-        if (!faceMaker.IsDone()) {
-            throw std::runtime_error("bsplineSurface: face construction failed");
-        }
-        return store(faceMaker.Shape());
+            int nPts = static_cast<int>(flatPoints.size()) / 3;
+            if (nPts != rows * cols) {
+                throw std::runtime_error("bsplineSurface: point count mismatch");
+            }
+            
+            // Build a 2D array of gp_Pnt (1-based indexing)
+            NCollection_Array2<gp_Pnt> points(1, rows, 1, cols);
+            for (int r = 0; r < rows; r++) {
+                for (int c = 0; c < cols; c++) {
+                    int idx = (r * cols + c) * 3;
+                    points.SetValue(r + 1, c + 1,
+                                    gp_Pnt(flatPoints[idx], flatPoints[idx + 1], flatPoints[idx + 2]));
+                }
+            }
+            
+            GeomAPI_PointsToBSplineSurface approx(points, 3, 8, GeomAbs_C2, 1e-3);
+            if (!approx.IsDone()) {
+                throw std::runtime_error("bsplineSurface: approximation failed");
+            }
+            
+            BRepBuilderAPI_MakeFace faceMaker(approx.Surface(), 1e-3);
+            if (!faceMaker.IsDone()) {
+                throw std::runtime_error("bsplineSurface: face construction failed");
+            }
+            return store(faceMaker.Shape());
+        }();
+        breakScope.throwIfBroke("bsplineSurface");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("bsplineSurface");
         throw std::runtime_error(std::string("bsplineSurface: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("bsplineSurface");
+        throw;
     }
 }
 
 uint32_t OcctKernel::fillFace(std::vector<uint32_t> edgeIds, std::vector<uint32_t> supportIds, bool tangent) {
+    BreakScope breakScope(*this);
     try {
-        if (edgeIds.empty()) {
-            throw std::runtime_error("fillFace: no edges");
-        }
-        if (tangent && supportIds.size() != edgeIds.size()) {
-            throw std::runtime_error("fillFace: each edge needs one support face");
-        }
-        BRepBuilderAPI_MakeWire wire;
-        for (uint32_t id : edgeIds) {
-            wire.Add(TopoDS::Edge(get(id)));
-            if (!wire.IsDone()) {
+        auto result = [&]() -> uint32_t {
+            if (edgeIds.empty()) {
+                throw std::runtime_error("fillFace: no edges");
+            }
+            if (tangent && supportIds.size() != edgeIds.size()) {
+                throw std::runtime_error("fillFace: each edge needs one support face");
+            }
+            BRepBuilderAPI_MakeWire wire;
+            for (uint32_t id : edgeIds) {
+                wire.Add(TopoDS::Edge(get(id)));
+                if (!wire.IsDone()) {
+                    throw std::runtime_error("fillFace: the edges are not in the order of one loop");
+                }
+            }
+            if (!BRep_Tool::IsClosed(wire.Wire())) {
                 throw std::runtime_error("fillFace: the edges are not in the order of one loop");
             }
-        }
-        if (!BRep_Tool::IsClosed(wire.Wire())) {
-            throw std::runtime_error("fillFace: the edges are not in the order of one loop");
-        }
-        BRepOffsetAPI_MakeFilling filler;
-        for (size_t i = 0; i < edgeIds.size(); i++) {
-            const TopoDS_Edge& edge = TopoDS::Edge(get(edgeIds[i]));
-            if (tangent) {
-                filler.Add(edge, TopoDS::Face(get(supportIds[i])), GeomAbs_G1);
-            } else {
-                filler.Add(edge, GeomAbs_C0);
+            BRepOffsetAPI_MakeFilling filler;
+            for (size_t i = 0; i < edgeIds.size(); i++) {
+                const TopoDS_Edge& edge = TopoDS::Edge(get(edgeIds[i]));
+                if (tangent) {
+                    filler.Add(edge, TopoDS::Face(get(supportIds[i])), GeomAbs_G1);
+                } else {
+                    filler.Add(edge, GeomAbs_C0);
+                }
             }
-        }
-        filler.Build();
-        if (!filler.IsDone()) {
-            throw std::runtime_error("fillFace: construction failed");
-        }
-        return store(filler.Shape());
+            filler.Build();
+            if (!filler.IsDone()) {
+                throw std::runtime_error("fillFace: construction failed");
+            }
+            return store(filler.Shape());
+        }();
+        breakScope.throwIfBroke("fillFace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("fillFace");
         throw std::runtime_error(std::string("fillFace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("fillFace");
+        throw;
     }
 }

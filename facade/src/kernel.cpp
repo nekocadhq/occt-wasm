@@ -134,7 +134,7 @@ bool meshInParallel(const TopoDS_Shape& shape) {
 }
 
 void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angularDeflection,
-                 bool relative, bool force) {
+                 bool relative, bool force, const Message_ProgressRange& range) {
     // The same parameters as the (shape, deflection, relative, angle, parallel) constructor.
     IMeshTools_Parameters params;
     params.Deflection = linearDeflection;
@@ -147,7 +147,7 @@ void meshShapeAt(const TopoDS_Shape& shape, double linearDeflection, double angu
         BRepTools::Clean(shape);
         params.AllowQualityDecrease = true;
     }
-    BRepMesh_IncrementalMesh mesher(shape, params);
+    BRepMesh_IncrementalMesh mesher(shape, params, range);
     if (!mesher.IsDone()) {
         throw std::runtime_error("meshing failed");
     }
@@ -377,7 +377,7 @@ MeshData OcctKernel::buildMeshData(const TopoDS_Shape& shape, double linearDefle
     std::optional<MeshSnapshot> snapshot;
     if (force)
         snapshot.emplace(shape);
-    meshShapeAt(shape, linearDeflection, angularDeflection, relative, force);
+    meshShapeAt(shape, linearDeflection, angularDeflection, relative, force, breakRange());
 
     // Cache each face's triangulation during this single traversal so the fill
     // pass below reuses it instead of re-exploring the shape and re-fetching

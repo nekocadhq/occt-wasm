@@ -2355,6 +2355,42 @@ export class OcctKernel {
     }
 
     // =======================================================================
+    // A stop from another thread
+    // =======================================================================
+
+    /**
+     * Let the calls that follow stop when the interrupt flag holds `token`.
+     * Give each call that can stop its own token, and give 0 after it: 0, the
+     * default, stops nothing. A stop of a token that is not set now does
+     * nothing, thus a stop that arrives late does not stop the next call.
+     *
+     * The booleans, the shells and offsets, the meshes, the STEP imports, and
+     * the fillets and chamfers stop. A stopped call throws an {@link OcctError}
+     * with the code {@link OcctErrorCode.Interrupted}. Its inputs do not change,
+     * and it leaves no new handle in the arena.
+     */
+    setBreakToken(token: number): void {
+        this.#raw.setBreakToken(token);
+    }
+
+    /**
+     * The interrupt flag: one `Int32` in the heap of the kernel. Another
+     * thread stops the call that runs with `Atomics.store(flag, 0, token)`,
+     * while this thread is busy in that call. Send the array to that thread
+     * one time; it stays valid when the memory grows.
+     *
+     * Only the threaded builds have a heap that is a `SharedArrayBuffer`, so
+     * this gives `null` in a build without threads. A call there runs to its end.
+     */
+    interruptFlag(): Int32Array | null {
+        const heap = this.#heap();
+        if (typeof SharedArrayBuffer === "undefined" || !(heap instanceof SharedArrayBuffer)) {
+            return null;
+        }
+        return new Int32Array(heap, this.#raw.interruptFlagAddress(), 1);
+    }
+
+    // =======================================================================
     // The history of a step
     // =======================================================================
 

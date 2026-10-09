@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,104 +302,193 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === healing ===
 
 uint32_t OcctKernel::fixShape(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        ShapeFix_Shape fixer(get(id));
-        fixer.Perform();
-        record(fixer.Context()->History());
-        return store(fixer.Shape());
+        auto result = [&]() -> uint32_t {
+            ShapeFix_Shape fixer(get(id));
+            fixer.Perform();
+            record(fixer.Context()->History());
+            return store(fixer.Shape());
+        }();
+        breakScope.throwIfBroke("fixShape");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("fixShape");
         throw std::runtime_error(std::string("fixShape: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("fixShape");
+        throw;
     }
 }
 
 uint32_t OcctKernel::unifySameDomain(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        ShapeUpgrade_UnifySameDomain upgrader(get(id), true, true, false);
-        upgrader.Build();
-        record(upgrader.History());
-        return store(upgrader.Shape());
+        auto result = [&]() -> uint32_t {
+            ShapeUpgrade_UnifySameDomain upgrader(get(id), true, true, false);
+            upgrader.Build();
+            record(upgrader.History());
+            return store(upgrader.Shape());
+        }();
+        breakScope.throwIfBroke("unifySameDomain");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("unifySameDomain");
         throw std::runtime_error(std::string("unifySameDomain: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("unifySameDomain");
+        throw;
     }
 }
 
 bool OcctKernel::isValid(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        BRepCheck_Analyzer checker(get(id));
-        return checker.IsValid();
+        auto result = [&]() -> bool {
+            BRepCheck_Analyzer checker(get(id));
+            return checker.IsValid();
+        }();
+        breakScope.throwIfBroke("isValid");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("isValid");
         throw std::runtime_error(std::string("isValid: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("isValid");
+        throw;
     }
 }
 
 uint32_t OcctKernel::healSolid(uint32_t id, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        Handle(ShapeFix_Solid) fixer = new ShapeFix_Solid(TopoDS::Solid(get(id)));
-        fixer->SetPrecision(tolerance);
-        fixer->Perform();
-        return store(fixer->Shape());
+        auto result = [&]() -> uint32_t {
+            Handle(ShapeFix_Solid) fixer = new ShapeFix_Solid(TopoDS::Solid(get(id)));
+            fixer->SetPrecision(tolerance);
+            fixer->Perform();
+            return store(fixer->Shape());
+        }();
+        breakScope.throwIfBroke("healSolid");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("healSolid");
         throw std::runtime_error(std::string("healSolid: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("healSolid");
+        throw;
     }
 }
 
 uint32_t OcctKernel::healFace(uint32_t id, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        ShapeFix_Face fixer(TopoDS::Face(get(id)));
-        fixer.SetPrecision(tolerance);
-        fixer.Perform();
-        return store(fixer.Face());
+        auto result = [&]() -> uint32_t {
+            ShapeFix_Face fixer(TopoDS::Face(get(id)));
+            fixer.SetPrecision(tolerance);
+            fixer.Perform();
+            return store(fixer.Face());
+        }();
+        breakScope.throwIfBroke("healFace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("healFace");
         throw std::runtime_error(std::string("healFace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("healFace");
+        throw;
     }
 }
 
 uint32_t OcctKernel::healWire(uint32_t id, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        ShapeFix_Wire fixer;
-        fixer.Load(TopoDS::Wire(get(id)));
-        fixer.SetPrecision(tolerance);
-        fixer.Perform();
-        return store(fixer.Wire());
+        auto result = [&]() -> uint32_t {
+            ShapeFix_Wire fixer;
+            fixer.Load(TopoDS::Wire(get(id)));
+            fixer.SetPrecision(tolerance);
+            fixer.Perform();
+            return store(fixer.Wire());
+        }();
+        breakScope.throwIfBroke("healWire");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("healWire");
         throw std::runtime_error(std::string("healWire: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("healWire");
+        throw;
     }
 }
 
 uint32_t OcctKernel::fixFaceOrientations(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        ShapeFix_Shape fixer(get(id));
-        fixer.Perform();
-        return store(fixer.Shape());
+        auto result = [&]() -> uint32_t {
+            ShapeFix_Shape fixer(get(id));
+            fixer.Perform();
+            return store(fixer.Shape());
+        }();
+        breakScope.throwIfBroke("fixFaceOrientations");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("fixFaceOrientations");
         throw std::runtime_error(std::string("fixFaceOrientations: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("fixFaceOrientations");
+        throw;
     }
 }
 
 void OcctKernel::buildCurves3d(uint32_t wireId) {
+    BreakScope breakScope(*this);
     try {
-        BRepLib::BuildCurves3d(get(wireId));
+        [&]() -> void {
+            BRepLib::BuildCurves3d(get(wireId));
+        }();
+        breakScope.throwIfBroke("buildCurves3d");
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("buildCurves3d");
         throw std::runtime_error(std::string("buildCurves3d: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("buildCurves3d");
+        throw;
     }
 }
 
 uint32_t OcctKernel::fixWireOnFace(uint32_t wireId, uint32_t faceId, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        ShapeFix_Wire fixer(TopoDS::Wire(get(wireId)), TopoDS::Face(get(faceId)), tolerance);
-        fixer.FixEdgeCurves();
-        return store(fixer.Wire());
+        auto result = [&]() -> uint32_t {
+            ShapeFix_Wire fixer(TopoDS::Wire(get(wireId)), TopoDS::Face(get(faceId)), tolerance);
+            fixer.FixEdgeCurves();
+            return store(fixer.Wire());
+        }();
+        breakScope.throwIfBroke("fixWireOnFace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("fixWireOnFace");
         throw std::runtime_error(std::string("fixWireOnFace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("fixWireOnFace");
+        throw;
     }
 }
 
 uint32_t OcctKernel::removeDegenerateEdges(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        ShapeFix_Shape fixer(get(id));
-        fixer.Perform();
-        return store(fixer.Shape());
+        auto result = [&]() -> uint32_t {
+            ShapeFix_Shape fixer(get(id));
+            fixer.Perform();
+            return store(fixer.Shape());
+        }();
+        breakScope.throwIfBroke("removeDegenerateEdges");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("removeDegenerateEdges");
         throw std::runtime_error(std::string("removeDegenerateEdges: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("removeDegenerateEdges");
+        throw;
     }
 }

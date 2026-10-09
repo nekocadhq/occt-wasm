@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,139 +302,220 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === primitives ===
 
 uint32_t OcctKernel::makeBox(double dx, double dy, double dz) {
+    BreakScope breakScope(*this);
     try {
-        BRepPrimAPI_MakeBox maker(dx, dy, dz);
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeBox: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepPrimAPI_MakeBox maker(dx, dy, dz);
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeBox: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeBox");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeBox");
         throw std::runtime_error(std::string("makeBox: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeBox");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeBoxFromCorners(double x1, double y1, double z1, double x2, double y2, double z2) {
+    BreakScope breakScope(*this);
     try {
-        BRepPrimAPI_MakeBox maker(gp_Pnt(x1, y1, z1), gp_Pnt(x2, y2, z2));
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeBoxFromCorners: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepPrimAPI_MakeBox maker(gp_Pnt(x1, y1, z1), gp_Pnt(x2, y2, z2));
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeBoxFromCorners: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeBoxFromCorners");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeBoxFromCorners");
         throw std::runtime_error(std::string("makeBoxFromCorners: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeBoxFromCorners");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeCylinder(double radius, double height) {
+    BreakScope breakScope(*this);
     try {
-        BRepPrimAPI_MakeCylinder maker(radius, height);
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeCylinder: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepPrimAPI_MakeCylinder maker(radius, height);
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeCylinder: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeCylinder");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeCylinder");
         throw std::runtime_error(std::string("makeCylinder: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeCylinder");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeSphere(double radius) {
+    BreakScope breakScope(*this);
     try {
-        BRepPrimAPI_MakeSphere maker(radius);
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeSphere: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepPrimAPI_MakeSphere maker(radius);
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeSphere: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeSphere");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeSphere");
         throw std::runtime_error(std::string("makeSphere: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeSphere");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeCone(double r1, double r2, double height) {
+    BreakScope breakScope(*this);
     try {
-        BRepPrimAPI_MakeCone maker(r1, r2, height);
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeCone: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepPrimAPI_MakeCone maker(r1, r2, height);
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeCone: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeCone");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeCone");
         throw std::runtime_error(std::string("makeCone: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeCone");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeTorus(double majorRadius, double minorRadius) {
+    BreakScope breakScope(*this);
     try {
-        BRepPrimAPI_MakeTorus maker(majorRadius, minorRadius);
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("makeTorus: construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepPrimAPI_MakeTorus maker(majorRadius, minorRadius);
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("makeTorus: construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("makeTorus");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeTorus");
         throw std::runtime_error(std::string("makeTorus: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeTorus");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeEllipsoid(double rx, double ry, double rz) {
+    BreakScope breakScope(*this);
     try {
-        double maxR = std::max({rx, ry, rz});
-        BRepPrimAPI_MakeSphere sphereMaker(maxR);
-        sphereMaker.Build();
-        if (!sphereMaker.IsDone()) {
-            throw std::runtime_error("makeEllipsoid: sphere construction failed");
-        }
-        gp_GTrsf gt;
-        gt.SetValue(1, 1, rx / maxR);
-        gt.SetValue(2, 2, ry / maxR);
-        gt.SetValue(3, 3, rz / maxR);
-        BRepBuilderAPI_GTransform xform(sphereMaker.Shape(), gt, true);
-        if (!xform.IsDone()) {
-            throw std::runtime_error("makeEllipsoid: transform failed");
-        }
-        return store(xform.Shape());
+        auto result = [&]() -> uint32_t {
+            double maxR = std::max({rx, ry, rz});
+            BRepPrimAPI_MakeSphere sphereMaker(maxR);
+            sphereMaker.Build();
+            if (!sphereMaker.IsDone()) {
+                throw std::runtime_error("makeEllipsoid: sphere construction failed");
+            }
+            gp_GTrsf gt;
+            gt.SetValue(1, 1, rx / maxR);
+            gt.SetValue(2, 2, ry / maxR);
+            gt.SetValue(3, 3, rz / maxR);
+            BRepBuilderAPI_GTransform xform(sphereMaker.Shape(), gt, true);
+            if (!xform.IsDone()) {
+                throw std::runtime_error("makeEllipsoid: transform failed");
+            }
+            return store(xform.Shape());
+        }();
+        breakScope.throwIfBroke("makeEllipsoid");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeEllipsoid");
         throw std::runtime_error(std::string("makeEllipsoid: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeEllipsoid");
+        throw;
     }
 }
 
 uint32_t OcctKernel::halfSpace(double ox, double oy, double oz, double nx, double ny, double nz) {
+    BreakScope breakScope(*this);
     try {
-        gp_Pnt origin(ox, oy, oz);
-        gp_Dir normal(nx, ny, nz);
-        gp_Pln plane(origin, normal);
-        TopoDS_Face face = BRepBuilderAPI_MakeFace(plane).Face();
-        gp_Pnt refPnt = origin.Translated(gp_Vec(normal));
-        BRepPrimAPI_MakeHalfSpace maker(face, refPnt);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("halfSpace: construction failed");
-        }
-        return store(maker.Solid());
+        auto result = [&]() -> uint32_t {
+            gp_Pnt origin(ox, oy, oz);
+            gp_Dir normal(nx, ny, nz);
+            gp_Pln plane(origin, normal);
+            TopoDS_Face face = BRepBuilderAPI_MakeFace(plane).Face();
+            gp_Pnt refPnt = origin.Translated(gp_Vec(normal));
+            BRepPrimAPI_MakeHalfSpace maker(face, refPnt);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("halfSpace: construction failed");
+            }
+            return store(maker.Solid());
+        }();
+        breakScope.throwIfBroke("halfSpace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("halfSpace");
         throw std::runtime_error(std::string("halfSpace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("halfSpace");
+        throw;
     }
 }
 
 uint32_t OcctKernel::makeRectangle(double width, double height) {
+    BreakScope breakScope(*this);
     try {
-        gp_Pnt p0(0, 0, 0), p1(width, 0, 0), p2(width, height, 0), p3(0, height, 0);
-        BRepBuilderAPI_MakeWire wireMaker;
-        wireMaker.Add(BRepBuilderAPI_MakeEdge(p0, p1).Edge());
-        wireMaker.Add(BRepBuilderAPI_MakeEdge(p1, p2).Edge());
-        wireMaker.Add(BRepBuilderAPI_MakeEdge(p2, p3).Edge());
-        wireMaker.Add(BRepBuilderAPI_MakeEdge(p3, p0).Edge());
-        if (!wireMaker.IsDone()) {
-            throw std::runtime_error("makeRectangle: wire construction failed");
-        }
-        BRepBuilderAPI_MakeFace faceMaker(wireMaker.Wire());
-        if (!faceMaker.IsDone()) {
-            throw std::runtime_error("makeRectangle: face construction failed");
-        }
-        return store(faceMaker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Pnt p0(0, 0, 0), p1(width, 0, 0), p2(width, height, 0), p3(0, height, 0);
+            BRepBuilderAPI_MakeWire wireMaker;
+            wireMaker.Add(BRepBuilderAPI_MakeEdge(p0, p1).Edge());
+            wireMaker.Add(BRepBuilderAPI_MakeEdge(p1, p2).Edge());
+            wireMaker.Add(BRepBuilderAPI_MakeEdge(p2, p3).Edge());
+            wireMaker.Add(BRepBuilderAPI_MakeEdge(p3, p0).Edge());
+            if (!wireMaker.IsDone()) {
+                throw std::runtime_error("makeRectangle: wire construction failed");
+            }
+            BRepBuilderAPI_MakeFace faceMaker(wireMaker.Wire());
+            if (!faceMaker.IsDone()) {
+                throw std::runtime_error("makeRectangle: face construction failed");
+            }
+            return store(faceMaker.Shape());
+        }();
+        breakScope.throwIfBroke("makeRectangle");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("makeRectangle");
         throw std::runtime_error(std::string("makeRectangle: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("makeRectangle");
+        throw;
     }
 }

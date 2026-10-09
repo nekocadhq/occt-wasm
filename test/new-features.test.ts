@@ -76,6 +76,14 @@ describe("OcctErrorCode classification", () => {
         expect(noContact.code).toBe(OcctErrorCode.ConstructionFailed);
     });
 
+    it("classifies a user break as Interrupted, before the operation fallback", () => {
+        expect(new OcctError("fuse", "fuse: interrupted").code).toBe(OcctErrorCode.Interrupted);
+        expect(new OcctError("tessellate", "tessellate: interrupted").code).toBe(OcctErrorCode.Interrupted);
+        expect(new OcctError("fillet", "fillet: interrupted").code).toBe(OcctErrorCode.Interrupted);
+        // A message that only names the word is not a break.
+        expect(new OcctError("fuse", "fuse: the interrupted face is open").code).toBe(OcctErrorCode.BooleanFailed);
+    });
+
     it("auto-classifies 'boolean operation failed' as BooleanFailed", () => {
         const err = new OcctError("fuse", "fuse: boolean operation failed");
         expect(err.code).toBe(OcctErrorCode.BooleanFailed);

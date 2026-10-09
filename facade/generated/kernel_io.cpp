@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,174 +302,222 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === io ===
 
 uint32_t OcctKernel::importStep(const std::string& data) {
+    BreakScope breakScope(*this);
     try {
-        STEPControl_Reader reader;
-        
-        // Write data to Emscripten's virtual filesystem
-        // STEPControl_Reader needs a file path — write to virtual FS
-        {
-            FILE* f = fopen("/tmp/import.step", "w");
-            if (!f) {
-                throw std::runtime_error("importStep: cannot create temp file");
+        auto result = [&]() -> uint32_t {
+            STEPControl_Reader reader;
+            
+            // Write data to Emscripten's virtual filesystem
+            // STEPControl_Reader needs a file path — write to virtual FS
+            {
+                FILE* f = fopen("/tmp/import.step", "w");
+                if (!f) {
+                    throw std::runtime_error("importStep: cannot create temp file");
+                }
+                fwrite(data.c_str(), 1, data.size(), f);
+                fclose(f);
             }
-            fwrite(data.c_str(), 1, data.size(), f);
-            fclose(f);
-        }
-        
-        IFSelect_ReturnStatus status = reader.ReadFile("/tmp/import.step");
-        if (status != IFSelect_RetDone) {
-            throw std::runtime_error("importStep: failed to read STEP data");
-        }
-        
-        reader.TransferRoots();
-        if (reader.NbShapes() == 0) {
-            throw std::runtime_error("importStep: no shapes found in STEP data");
-        }
-        
-        return store(reader.OneShape());
+            
+            IFSelect_ReturnStatus status = reader.ReadFile("/tmp/import.step");
+            if (status != IFSelect_RetDone) {
+                throw std::runtime_error("importStep: failed to read STEP data");
+            }
+            
+            reader.TransferRoots(breakRange());
+            if (reader.NbShapes() == 0) {
+                throw std::runtime_error("importStep: no shapes found in STEP data");
+            }
+            
+            return store(reader.OneShape());
+        }();
+        breakScope.throwIfBroke("importStep");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("importStep");
         throw std::runtime_error(std::string("importStep: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("importStep");
+        throw;
     }
 }
 
 uint32_t OcctKernel::importIges(const std::string& data) {
+    BreakScope breakScope(*this);
     try {
-        IGESControl_Controller::Init();
-        IGESControl_Reader reader;
-        
-        // IGESControl_Reader needs a file path — write the data to the virtual FS
-        const char* tmpPath = "/tmp/import.igs";
-        {
-            FILE* f = fopen(tmpPath, "w");
-            if (!f) {
-                throw std::runtime_error("importIges: cannot create temp file");
+        auto result = [&]() -> uint32_t {
+            IGESControl_Controller::Init();
+            IGESControl_Reader reader;
+            
+            // IGESControl_Reader needs a file path — write the data to the virtual FS
+            const char* tmpPath = "/tmp/import.igs";
+            {
+                FILE* f = fopen(tmpPath, "w");
+                if (!f) {
+                    throw std::runtime_error("importIges: cannot create temp file");
+                }
+                fwrite(data.c_str(), 1, data.size(), f);
+                fclose(f);
             }
-            fwrite(data.c_str(), 1, data.size(), f);
-            fclose(f);
-        }
-        
-        IFSelect_ReturnStatus status = reader.ReadFile(tmpPath);
-        std::remove(tmpPath);
-        if (status != IFSelect_RetDone) {
-            throw std::runtime_error("importIges: failed to read IGES data");
-        }
-        
-        // Skip the entities that the file marks as blank, such as construction geometry
-        reader.SetReadVisible(Standard_True);
-        reader.TransferRoots();
-        if (reader.NbShapes() == 0) {
-            throw std::runtime_error("importIges: no shapes found in IGES data");
-        }
-        
-        return store(reader.OneShape());
+            
+            IFSelect_ReturnStatus status = reader.ReadFile(tmpPath);
+            std::remove(tmpPath);
+            if (status != IFSelect_RetDone) {
+                throw std::runtime_error("importIges: failed to read IGES data");
+            }
+            
+            // Skip the entities that the file marks as blank, such as construction geometry
+            reader.SetReadVisible(Standard_True);
+            reader.TransferRoots();
+            if (reader.NbShapes() == 0) {
+                throw std::runtime_error("importIges: no shapes found in IGES data");
+            }
+            
+            return store(reader.OneShape());
+        }();
+        breakScope.throwIfBroke("importIges");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("importIges");
         throw std::runtime_error(std::string("importIges: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("importIges");
+        throw;
     }
 }
 
 std::string OcctKernel::exportStep(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        
-        STEPControl_Writer writer;
-        // The STEP write actor only fixes non-conformant elementary surfaces (e.g. a
-        // cone whose stored ConicalSurface has a negative semi-angle) when the
-        // DirectFaces shape-processing op runs. That op lives on the shared OCCT "STEP"
-        // controller actor, whose flags any prior XCAF/STEPCAF export silently clears --
-        // after which writer.Transfer() runs no processing and drops conical faces. Set
-        // the flags explicitly so single-shape STEP export is independent of that state.
-        ShapeProcess::OperationsFlags spFlags;
-        spFlags.set(ShapeProcess::Operation::DirectFaces);
-        spFlags.set(ShapeProcess::Operation::SplitCommonVertex);
-        writer.SetShapeProcessFlags(spFlags);
-        IFSelect_ReturnStatus status = writer.Transfer(shape, STEPControl_AsIs);
-        if (status != IFSelect_RetDone) {
-            throw std::runtime_error("exportStep: transfer failed");
-        }
-        
-        // Write to temp file then read back
-        const char* tmpPath = "/tmp/export.step";
-        status = writer.Write(tmpPath);
-        if (status != IFSelect_RetDone) {
-            throw std::runtime_error("exportStep: write failed");
-        }
-        
-        // Read file content
-        FILE* f = fopen(tmpPath, "r");
-        if (!f) {
-            throw std::runtime_error("exportStep: cannot read temp file");
-        }
-        fseek(f, 0, SEEK_END);
-        long size = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        std::string result(size, '\0');
-        fread(&result[0], 1, size, f);
-        fclose(f);
-        
+        auto result = [&]() -> std::string {
+            const auto& shape = get(id);
+            
+            STEPControl_Writer writer;
+            // The STEP write actor only fixes non-conformant elementary surfaces (e.g. a
+            // cone whose stored ConicalSurface has a negative semi-angle) when the
+            // DirectFaces shape-processing op runs. That op lives on the shared OCCT "STEP"
+            // controller actor, whose flags any prior XCAF/STEPCAF export silently clears --
+            // after which writer.Transfer() runs no processing and drops conical faces. Set
+            // the flags explicitly so single-shape STEP export is independent of that state.
+            ShapeProcess::OperationsFlags spFlags;
+            spFlags.set(ShapeProcess::Operation::DirectFaces);
+            spFlags.set(ShapeProcess::Operation::SplitCommonVertex);
+            writer.SetShapeProcessFlags(spFlags);
+            IFSelect_ReturnStatus status = writer.Transfer(shape, STEPControl_AsIs);
+            if (status != IFSelect_RetDone) {
+                throw std::runtime_error("exportStep: transfer failed");
+            }
+            
+            // Write to temp file then read back
+            const char* tmpPath = "/tmp/export.step";
+            status = writer.Write(tmpPath);
+            if (status != IFSelect_RetDone) {
+                throw std::runtime_error("exportStep: write failed");
+            }
+            
+            // Read file content
+            FILE* f = fopen(tmpPath, "r");
+            if (!f) {
+                throw std::runtime_error("exportStep: cannot read temp file");
+            }
+            fseek(f, 0, SEEK_END);
+            long size = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            std::string result(size, '\0');
+            fread(&result[0], 1, size, f);
+            fclose(f);
+            
+            return result;
+        }();
+        breakScope.throwIfBroke("exportStep");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("exportStep");
         throw std::runtime_error(std::string("exportStep: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("exportStep");
+        throw;
     }
 }
 
 std::string OcctKernel::exportStl(uint32_t id, double linearDeflection, bool ascii) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        
-        // Mesh the shape first
-        BRepMesh_IncrementalMesh mesher(shape, linearDeflection, false, 0.5, meshInParallel(shape));
-        
-        StlAPI_Writer writer;
-        writer.ASCIIMode() = ascii;
-        
-        const char* tmpPath = "/tmp/export.stl";
-        if (!writer.Write(shape, tmpPath)) {
-            throw std::runtime_error("exportStl: write failed");
-        }
-        
-        FILE* f = fopen(tmpPath, "rb");
-        if (!f) {
-            throw std::runtime_error("exportStl: cannot read temp file");
-        }
-        fseek(f, 0, SEEK_END);
-        long size = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        std::string result(size, '\0');
-        fread(&result[0], 1, size, f);
-        fclose(f);
-        
+        auto result = [&]() -> std::string {
+            const auto& shape = get(id);
+            
+            // Mesh the shape first
+            IMeshTools_Parameters meshParams;
+            meshParams.Deflection = linearDeflection;
+            meshParams.InParallel = meshInParallel(shape);
+            BRepMesh_IncrementalMesh mesher(shape, meshParams, breakRange());
+            
+            StlAPI_Writer writer;
+            writer.ASCIIMode() = ascii;
+            
+            const char* tmpPath = "/tmp/export.stl";
+            if (!writer.Write(shape, tmpPath)) {
+                throw std::runtime_error("exportStl: write failed");
+            }
+            
+            FILE* f = fopen(tmpPath, "rb");
+            if (!f) {
+                throw std::runtime_error("exportStl: cannot read temp file");
+            }
+            fseek(f, 0, SEEK_END);
+            long size = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            std::string result(size, '\0');
+            fread(&result[0], 1, size, f);
+            fclose(f);
+            
+            return result;
+        }();
+        breakScope.throwIfBroke("exportStl");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("exportStl");
         throw std::runtime_error(std::string("exportStl: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("exportStl");
+        throw;
     }
 }
 
 uint32_t OcctKernel::importStl(const std::string& data) {
+    BreakScope breakScope(*this);
     try {
-        // If data is non-empty, write it to the virtual FS.
-        // If empty, assume the caller already wrote to /tmp/import.stl via FS API.
-        if (!data.empty()) {
-            FILE* f = fopen("/tmp/import.stl", "wb");
-            if (!f) {
-                throw std::runtime_error("importStl: cannot create temp file");
+        auto result = [&]() -> uint32_t {
+            // If data is non-empty, write it to the virtual FS.
+            // If empty, assume the caller already wrote to /tmp/import.stl via FS API.
+            if (!data.empty()) {
+                FILE* f = fopen("/tmp/import.stl", "wb");
+                if (!f) {
+                    throw std::runtime_error("importStl: cannot create temp file");
+                }
+                fwrite(data.c_str(), 1, data.size(), f);
+                fclose(f);
             }
-            fwrite(data.c_str(), 1, data.size(), f);
-            fclose(f);
-        }
-        
-        TopoDS_Shape shape;
-        StlAPI_Reader reader;
-        if (!reader.Read(shape, "/tmp/import.stl")) {
-            throw std::runtime_error("importStl: failed to read STL data");
-        }
-        
-        if (shape.IsNull()) {
-            throw std::runtime_error("importStl: no shape produced from STL data");
-        }
-        
-        return store(shape);
+            
+            TopoDS_Shape shape;
+            StlAPI_Reader reader;
+            if (!reader.Read(shape, "/tmp/import.stl")) {
+                throw std::runtime_error("importStl: failed to read STL data");
+            }
+            
+            if (shape.IsNull()) {
+                throw std::runtime_error("importStl: no shape produced from STL data");
+            }
+            
+            return store(shape);
+        }();
+        breakScope.throwIfBroke("importStl");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("importStl");
         throw std::runtime_error(std::string("importStl: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("importStl");
+        throw;
     }
 }
 
@@ -477,38 +526,47 @@ std::string OcctKernel::exportStlBinary(uint32_t id, double linearDeflection) {
 }
 
 std::string OcctKernel::exportStlAdvanced(uint32_t id, double linearDeflection, double angularDeflection, bool ascii, bool force) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        
-        std::optional<MeshSnapshot> snapshot;
-        if (force) {
-            snapshot.emplace(shape);
-        }
-        meshShapeAt(shape, linearDeflection, angularDeflection, false, force);
-        
-        StlAPI_Writer writer;
-        writer.ASCIIMode() = ascii;
-        
-        const char* tmpPath = "/tmp/export.stl";
-        if (!writer.Write(shape, tmpPath)) {
-            throw std::runtime_error("write failed");
-        }
-        
-        FILE* f = fopen(tmpPath, "rb");
-        if (!f) {
-            throw std::runtime_error("cannot read temp file");
-        }
-        fseek(f, 0, SEEK_END);
-        long size = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        std::string result(size, '\0');
-        fread(&result[0], 1, size, f);
-        fclose(f);
-        std::remove(tmpPath);
-        
+        auto result = [&]() -> std::string {
+            const auto& shape = get(id);
+            
+            std::optional<MeshSnapshot> snapshot;
+            if (force) {
+                snapshot.emplace(shape);
+            }
+            meshShapeAt(shape, linearDeflection, angularDeflection, false, force, breakRange());
+            
+            StlAPI_Writer writer;
+            writer.ASCIIMode() = ascii;
+            
+            const char* tmpPath = "/tmp/export.stl";
+            if (!writer.Write(shape, tmpPath)) {
+                throw std::runtime_error("write failed");
+            }
+            
+            FILE* f = fopen(tmpPath, "rb");
+            if (!f) {
+                throw std::runtime_error("cannot read temp file");
+            }
+            fseek(f, 0, SEEK_END);
+            long size = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            std::string result(size, '\0');
+            fread(&result[0], 1, size, f);
+            fclose(f);
+            std::remove(tmpPath);
+            
+            return result;
+        }();
+        breakScope.throwIfBroke("exportStlAdvanced");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("exportStlAdvanced");
         throw std::runtime_error(std::string("exportStlAdvanced: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("exportStlAdvanced");
+        throw;
     }
 }
 
@@ -521,51 +579,87 @@ uint32_t OcctKernel::importStlBinary(const std::string& data) {
 }
 
 std::string OcctKernel::toBREP(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        std::ostringstream oss(std::ios::binary);
-        oss << std::setprecision(17);
-        BRepTools::Write(get(id), oss);
-        return oss.str();
+        auto result = [&]() -> std::string {
+            std::ostringstream oss(std::ios::binary);
+            oss << std::setprecision(17);
+            BRepTools::Write(get(id), oss);
+            return oss.str();
+        }();
+        breakScope.throwIfBroke("toBREP");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("toBREP");
         throw std::runtime_error(std::string("toBREP: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("toBREP");
+        throw;
     }
 }
 
 uint32_t OcctKernel::fromBREP(const std::string& data) {
+    BreakScope breakScope(*this);
     try {
-        std::istringstream iss(data, std::ios::binary);
-        TopoDS_Shape shape;
-        BRep_Builder builder;
-        Message_ProgressRange progress;
-        BRepTools::Read(shape, iss, builder, progress);
-        if (shape.IsNull()) {
-            throw std::runtime_error("fromBREP: failed to read shape");
-        }
-        return store(shape);
+        auto result = [&]() -> uint32_t {
+            std::istringstream iss(data, std::ios::binary);
+            TopoDS_Shape shape;
+            BRep_Builder builder;
+            Message_ProgressRange progress;
+            BRepTools::Read(shape, iss, builder, progress);
+            if (shape.IsNull()) {
+                throw std::runtime_error("fromBREP: failed to read shape");
+            }
+            return store(shape);
+        }();
+        breakScope.throwIfBroke("fromBREP");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("fromBREP");
         throw std::runtime_error(std::string("fromBREP: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("fromBREP");
+        throw;
     }
 }
 
 std::string OcctKernel::exportBrepBinary(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        std::string path = "/tmp/export.brep.bin";
-        BinTools::Write(get(id), path.c_str());
-        return path;
+        auto result = [&]() -> std::string {
+            std::string path = "/tmp/export.brep.bin";
+            BinTools::Write(get(id), path.c_str());
+            return path;
+        }();
+        breakScope.throwIfBroke("exportBrepBinary");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("exportBrepBinary");
         throw std::runtime_error(std::string("exportBrepBinary: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("exportBrepBinary");
+        throw;
     }
 }
 
 uint32_t OcctKernel::importBrepBinary(const std::string& path) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Shape shape;
-        BinTools::Read(shape, path.c_str());
-        if (shape.IsNull()) {
-            throw std::runtime_error("importBrepBinary: failed to read shape");
-        }
-        return store(shape);
+        auto result = [&]() -> uint32_t {
+            TopoDS_Shape shape;
+            BinTools::Read(shape, path.c_str());
+            if (shape.IsNull()) {
+                throw std::runtime_error("importBrepBinary: failed to read shape");
+            }
+            return store(shape);
+        }();
+        breakScope.throwIfBroke("importBrepBinary");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("importBrepBinary");
         throw std::runtime_error(std::string("importBrepBinary: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("importBrepBinary");
+        throw;
     }
 }

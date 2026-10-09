@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,340 +302,547 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === query ===
 
 BBoxData OcctKernel::getBoundingBox(uint32_t id, bool useTriangulation) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        Bnd_Box box;
-        BRepBndLib::AddOptimal(shape, box, useTriangulation, false);
-        if (box.IsVoid()) {
-            throw std::runtime_error("getBoundingBox: shape has no geometry");
-        }
-        BBoxData result{};
-        box.Get(result.xmin, result.ymin, result.zmin, result.xmax, result.ymax, result.zmax);
+        auto result = [&]() -> BBoxData {
+            const auto& shape = get(id);
+            Bnd_Box box;
+            BRepBndLib::AddOptimal(shape, box, useTriangulation, false);
+            if (box.IsVoid()) {
+                throw std::runtime_error("getBoundingBox: shape has no geometry");
+            }
+            BBoxData result{};
+            box.Get(result.xmin, result.ymin, result.zmin, result.xmax, result.ymax, result.zmax);
+            return result;
+        }();
+        breakScope.throwIfBroke("getBoundingBox");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getBoundingBox");
         throw std::runtime_error(std::string("getBoundingBox: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getBoundingBox");
+        throw;
     }
 }
 
 BBoxData OcctKernel::getBoundingBoxLoose(uint32_t id, bool useTriangulation) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        Bnd_Box box;
-        BRepBndLib::Add(shape, box, useTriangulation);
-        if (box.IsVoid()) {
-            throw std::runtime_error("getBoundingBoxLoose: shape has no geometry");
-        }
-        BBoxData result{};
-        box.Get(result.xmin, result.ymin, result.zmin, result.xmax, result.ymax, result.zmax);
+        auto result = [&]() -> BBoxData {
+            const auto& shape = get(id);
+            Bnd_Box box;
+            BRepBndLib::Add(shape, box, useTriangulation);
+            if (box.IsVoid()) {
+                throw std::runtime_error("getBoundingBoxLoose: shape has no geometry");
+            }
+            BBoxData result{};
+            box.Get(result.xmin, result.ymin, result.zmin, result.xmax, result.ymax, result.zmax);
+            return result;
+        }();
+        breakScope.throwIfBroke("getBoundingBoxLoose");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getBoundingBoxLoose");
         throw std::runtime_error(std::string("getBoundingBoxLoose: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getBoundingBoxLoose");
+        throw;
     }
 }
 
 double OcctKernel::getVolume(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        GProp_GProps props;
-        BRepGProp::VolumeProperties(shape, props);
-        return props.Mass();
+        auto result = [&]() -> double {
+            const auto& shape = get(id);
+            GProp_GProps props;
+            BRepGProp::VolumeProperties(shape, props);
+            return props.Mass();
+        }();
+        breakScope.throwIfBroke("getVolume");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getVolume");
         throw std::runtime_error(std::string("getVolume: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getVolume");
+        throw;
     }
 }
 
 double OcctKernel::getSurfaceArea(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        GProp_GProps props;
-        BRepGProp::SurfaceProperties(shape, props);
-        return props.Mass();
+        auto result = [&]() -> double {
+            const auto& shape = get(id);
+            GProp_GProps props;
+            BRepGProp::SurfaceProperties(shape, props);
+            return props.Mass();
+        }();
+        breakScope.throwIfBroke("getSurfaceArea");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getSurfaceArea");
         throw std::runtime_error(std::string("getSurfaceArea: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getSurfaceArea");
+        throw;
     }
 }
 
 double OcctKernel::getLength(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        GProp_GProps props;
-        BRepGProp::LinearProperties(shape, props);
-        return props.Mass();
+        auto result = [&]() -> double {
+            const auto& shape = get(id);
+            GProp_GProps props;
+            BRepGProp::LinearProperties(shape, props);
+            return props.Mass();
+        }();
+        breakScope.throwIfBroke("getLength");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getLength");
         throw std::runtime_error(std::string("getLength: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getLength");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::getCenterOfMass(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        GProp_GProps props;
-        BRepGProp::VolumeProperties(shape, props);
-        gp_Pnt com = props.CentreOfMass();
-        return {com.X(), com.Y(), com.Z()};
+        auto result = [&]() -> std::vector<double> {
+            const auto& shape = get(id);
+            GProp_GProps props;
+            BRepGProp::VolumeProperties(shape, props);
+            gp_Pnt com = props.CentreOfMass();
+            return {com.X(), com.Y(), com.Z()};
+        }();
+        breakScope.throwIfBroke("getCenterOfMass");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getCenterOfMass");
         throw std::runtime_error(std::string("getCenterOfMass: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getCenterOfMass");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::getInertia(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        GProp_GProps props;
-        BRepGProp::VolumeProperties(shape, props);
-        gp_Mat m = props.MatrixOfInertia();
-        return {m(1, 1), m(1, 2), m(1, 3),
-                m(2, 1), m(2, 2), m(2, 3),
-                m(3, 1), m(3, 2), m(3, 3)};
+        auto result = [&]() -> std::vector<double> {
+            const auto& shape = get(id);
+            GProp_GProps props;
+            BRepGProp::VolumeProperties(shape, props);
+            gp_Mat m = props.MatrixOfInertia();
+            return {m(1, 1), m(1, 2), m(1, 3),
+                    m(2, 1), m(2, 2), m(2, 3),
+                    m(3, 1), m(3, 2), m(3, 3)};
+        }();
+        breakScope.throwIfBroke("getInertia");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getInertia");
         throw std::runtime_error(std::string("getInertia: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getInertia");
+        throw;
     }
 }
 
 bool OcctKernel::containsPoint(uint32_t id, double x, double y, double z, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        BRepClass3d_SolidClassifier classifier(shape);
-        classifier.Perform(gp_Pnt(x, y, z), tolerance);
-        TopAbs_State state = classifier.State();
-        return state == TopAbs_IN || state == TopAbs_ON;
+        auto result = [&]() -> bool {
+            const auto& shape = get(id);
+            BRepClass3d_SolidClassifier classifier(shape);
+            classifier.Perform(gp_Pnt(x, y, z), tolerance);
+            TopAbs_State state = classifier.State();
+            return state == TopAbs_IN || state == TopAbs_ON;
+        }();
+        breakScope.throwIfBroke("containsPoint");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("containsPoint");
         throw std::runtime_error(std::string("containsPoint: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("containsPoint");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::getSurfaceCenterOfMass(uint32_t faceId) {
+    BreakScope breakScope(*this);
     try {
-        const auto& face = get(faceId);
-        GProp_GProps props;
-        BRepGProp::SurfaceProperties(face, props);
-        gp_Pnt com = props.CentreOfMass();
-        return {com.X(), com.Y(), com.Z()};
+        auto result = [&]() -> std::vector<double> {
+            const auto& face = get(faceId);
+            GProp_GProps props;
+            BRepGProp::SurfaceProperties(face, props);
+            gp_Pnt com = props.CentreOfMass();
+            return {com.X(), com.Y(), com.Z()};
+        }();
+        breakScope.throwIfBroke("getSurfaceCenterOfMass");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getSurfaceCenterOfMass");
         throw std::runtime_error(std::string("getSurfaceCenterOfMass: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getSurfaceCenterOfMass");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::vertexPosition(uint32_t vertexId) {
+    BreakScope breakScope(*this);
     try {
-        gp_Pnt p = BRep_Tool::Pnt(TopoDS::Vertex(get(vertexId)));
-        return {p.X(), p.Y(), p.Z()};
+        auto result = [&]() -> std::vector<double> {
+            gp_Pnt p = BRep_Tool::Pnt(TopoDS::Vertex(get(vertexId)));
+            return {p.X(), p.Y(), p.Z()};
+        }();
+        breakScope.throwIfBroke("vertexPosition");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("vertexPosition");
         throw std::runtime_error(std::string("vertexPosition: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("vertexPosition");
+        throw;
     }
 }
 
 std::string OcctKernel::surfaceType(uint32_t faceId) {
+    BreakScope breakScope(*this);
     try {
-        BRepAdaptor_Surface surf(TopoDS::Face(get(faceId)));
-        switch (surf.GetType()) {
-        case GeomAbs_Plane:
-            return "plane";
-        case GeomAbs_Cylinder:
-            return "cylinder";
-        case GeomAbs_Cone:
-            return "cone";
-        case GeomAbs_Sphere:
-            return "sphere";
-        case GeomAbs_Torus:
-            return "torus";
-        case GeomAbs_BezierSurface:
-            return "bezier";
-        case GeomAbs_BSplineSurface:
-            return "bspline";
-        case GeomAbs_SurfaceOfRevolution:
-            return "revolution";
-        case GeomAbs_SurfaceOfExtrusion:
-            return "extrusion";
-        case GeomAbs_OffsetSurface:
-            return "offset";
-        default:
-            return "other";
-        }
+        auto result = [&]() -> std::string {
+            BRepAdaptor_Surface surf(TopoDS::Face(get(faceId)));
+            switch (surf.GetType()) {
+            case GeomAbs_Plane:
+                return "plane";
+            case GeomAbs_Cylinder:
+                return "cylinder";
+            case GeomAbs_Cone:
+                return "cone";
+            case GeomAbs_Sphere:
+                return "sphere";
+            case GeomAbs_Torus:
+                return "torus";
+            case GeomAbs_BezierSurface:
+                return "bezier";
+            case GeomAbs_BSplineSurface:
+                return "bspline";
+            case GeomAbs_SurfaceOfRevolution:
+                return "revolution";
+            case GeomAbs_SurfaceOfExtrusion:
+                return "extrusion";
+            case GeomAbs_OffsetSurface:
+                return "offset";
+            default:
+                return "other";
+            }
+        }();
+        breakScope.throwIfBroke("surfaceType");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("surfaceType");
         throw std::runtime_error(std::string("surfaceType: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("surfaceType");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::surfaceNormal(uint32_t faceId, double u, double v) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Face face = TopoDS::Face(get(faceId));
-        BRepAdaptor_Surface surf(face);
-        gp_Pnt pt;
-        gp_Vec d1u, d1v;
-        surf.D1(u, v, pt, d1u, d1v);
-        gp_Vec normal = d1u.Crossed(d1v);
-        if (normal.Magnitude() > 1e-10) {
-            normal.Normalize();
-        }
-        // Flip normal for reversed faces (matches OCCT convention)
-        if (face.Orientation() == TopAbs_REVERSED) {
-            normal.Reverse();
-        }
-        return {normal.X(), normal.Y(), normal.Z()};
+        auto result = [&]() -> std::vector<double> {
+            TopoDS_Face face = TopoDS::Face(get(faceId));
+            BRepAdaptor_Surface surf(face);
+            gp_Pnt pt;
+            gp_Vec d1u, d1v;
+            surf.D1(u, v, pt, d1u, d1v);
+            gp_Vec normal = d1u.Crossed(d1v);
+            if (normal.Magnitude() > 1e-10) {
+                normal.Normalize();
+            }
+            // Flip normal for reversed faces (matches OCCT convention)
+            if (face.Orientation() == TopAbs_REVERSED) {
+                normal.Reverse();
+            }
+            return {normal.X(), normal.Y(), normal.Z()};
+        }();
+        breakScope.throwIfBroke("surfaceNormal");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("surfaceNormal");
         throw std::runtime_error(std::string("surfaceNormal: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("surfaceNormal");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::pointOnSurface(uint32_t faceId, double u, double v) {
+    BreakScope breakScope(*this);
     try {
-        BRepAdaptor_Surface surf(TopoDS::Face(get(faceId)));
-        gp_Pnt pt = surf.Value(u, v);
-        return {pt.X(), pt.Y(), pt.Z()};
+        auto result = [&]() -> std::vector<double> {
+            BRepAdaptor_Surface surf(TopoDS::Face(get(faceId)));
+            gp_Pnt pt = surf.Value(u, v);
+            return {pt.X(), pt.Y(), pt.Z()};
+        }();
+        breakScope.throwIfBroke("pointOnSurface");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("pointOnSurface");
         throw std::runtime_error(std::string("pointOnSurface: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("pointOnSurface");
+        throw;
     }
 }
 
 uint32_t OcctKernel::outerWire(uint32_t faceId) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Wire wire = ShapeAnalysis::OuterWire(TopoDS::Face(get(faceId)));
-        if (wire.IsNull()) {
-            throw std::runtime_error("outerWire: face has no outer wire");
-        }
-        return store(wire);
+        auto result = [&]() -> uint32_t {
+            TopoDS_Wire wire = ShapeAnalysis::OuterWire(TopoDS::Face(get(faceId)));
+            if (wire.IsNull()) {
+                throw std::runtime_error("outerWire: face has no outer wire");
+            }
+            return store(wire);
+        }();
+        breakScope.throwIfBroke("outerWire");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("outerWire");
         throw std::runtime_error(std::string("outerWire: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("outerWire");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::getLinearCenterOfMass(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        GProp_GProps props;
-        BRepGProp::LinearProperties(shape, props);
-        gp_Pnt com = props.CentreOfMass();
-        return {com.X(), com.Y(), com.Z()};
+        auto result = [&]() -> std::vector<double> {
+            const auto& shape = get(id);
+            GProp_GProps props;
+            BRepGProp::LinearProperties(shape, props);
+            gp_Pnt com = props.CentreOfMass();
+            return {com.X(), com.Y(), com.Z()};
+        }();
+        breakScope.throwIfBroke("getLinearCenterOfMass");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getLinearCenterOfMass");
         throw std::runtime_error(std::string("getLinearCenterOfMass: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getLinearCenterOfMass");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::surfaceCurvature(uint32_t faceId, double u, double v) {
+    BreakScope breakScope(*this);
     try {
-        BRepAdaptor_Surface surf(TopoDS::Face(get(faceId)));
-        BRepLProp_SLProps props(surf, u, v, 2, 1e-6);
-        if (!props.IsCurvatureDefined()) {
-            throw std::runtime_error("surfaceCurvature: curvature not defined at point");
-        }
-        double mean = props.MeanCurvature();
-        double gaussian = props.GaussianCurvature();
-        double maxK = props.MaxCurvature();
-        double minK = props.MinCurvature();
-        return {mean, gaussian, maxK, minK};
+        auto result = [&]() -> std::vector<double> {
+            BRepAdaptor_Surface surf(TopoDS::Face(get(faceId)));
+            BRepLProp_SLProps props(surf, u, v, 2, 1e-6);
+            if (!props.IsCurvatureDefined()) {
+                throw std::runtime_error("surfaceCurvature: curvature not defined at point");
+            }
+            double mean = props.MeanCurvature();
+            double gaussian = props.GaussianCurvature();
+            double maxK = props.MaxCurvature();
+            double minK = props.MinCurvature();
+            return {mean, gaussian, maxK, minK};
+        }();
+        breakScope.throwIfBroke("surfaceCurvature");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("surfaceCurvature");
         throw std::runtime_error(std::string("surfaceCurvature: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("surfaceCurvature");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::uvBounds(uint32_t faceId) {
+    BreakScope breakScope(*this);
     try {
-        BRepAdaptor_Surface surf(TopoDS::Face(get(faceId)));
-        return {surf.FirstUParameter(), surf.LastUParameter(), surf.FirstVParameter(),
-                surf.LastVParameter()};
+        auto result = [&]() -> std::vector<double> {
+            BRepAdaptor_Surface surf(TopoDS::Face(get(faceId)));
+            return {surf.FirstUParameter(), surf.LastUParameter(), surf.FirstVParameter(),
+                    surf.LastVParameter()};
+        }();
+        breakScope.throwIfBroke("uvBounds");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("uvBounds");
         throw std::runtime_error(std::string("uvBounds: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("uvBounds");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::getFaceCylinderData(uint32_t faceId) {
+    BreakScope breakScope(*this);
     try {
-        BRepAdaptor_Surface surf(TopoDS::Face(get(faceId)));
-        if (surf.GetType() != GeomAbs_Cylinder) {
-            return {};
-        }
-        gp_Cylinder cyl = surf.Cylinder();
-        return {cyl.Radius(), cyl.Direct() ? 1.0 : 0.0};
+        auto result = [&]() -> std::vector<double> {
+            BRepAdaptor_Surface surf(TopoDS::Face(get(faceId)));
+            if (surf.GetType() != GeomAbs_Cylinder) {
+                return {};
+            }
+            gp_Cylinder cyl = surf.Cylinder();
+            return {cyl.Radius(), cyl.Direct() ? 1.0 : 0.0};
+        }();
+        breakScope.throwIfBroke("getFaceCylinderData");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getFaceCylinderData");
         throw std::runtime_error(std::string("getFaceCylinderData: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getFaceCylinderData");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::uvFromPoint(uint32_t faceId, double x, double y, double z) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Face face = TopoDS::Face(get(faceId));
-        Handle(Geom_Surface) geomSurf = BRep_Tool::Surface(face);
-        ShapeAnalysis_Surface sas(geomSurf);
-        gp_Pnt2d uv = sas.ValueOfUV(gp_Pnt(x, y, z), 1e-6);
-        return {uv.X(), uv.Y()};
+        auto result = [&]() -> std::vector<double> {
+            TopoDS_Face face = TopoDS::Face(get(faceId));
+            Handle(Geom_Surface) geomSurf = BRep_Tool::Surface(face);
+            ShapeAnalysis_Surface sas(geomSurf);
+            gp_Pnt2d uv = sas.ValueOfUV(gp_Pnt(x, y, z), 1e-6);
+            return {uv.X(), uv.Y()};
+        }();
+        breakScope.throwIfBroke("uvFromPoint");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("uvFromPoint");
         throw std::runtime_error(std::string("uvFromPoint: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("uvFromPoint");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::projectPointOnFace(uint32_t faceId, double x, double y, double z) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Face face = TopoDS::Face(get(faceId));
-        Handle(Geom_Surface) geomSurf = BRep_Tool::Surface(face);
-        GeomAPI_ProjectPointOnSurf proj(gp_Pnt(x, y, z), geomSurf);
-        if (proj.NbPoints() == 0) {
-            throw std::runtime_error("projectPointOnFace: no projection found");
-        }
-        gp_Pnt nearest = proj.NearestPoint();
-        double u, v;
-        proj.LowerDistanceParameters(u, v);
-        return {nearest.X(), nearest.Y(), nearest.Z(), u, v, proj.LowerDistance()};
+        auto result = [&]() -> std::vector<double> {
+            TopoDS_Face face = TopoDS::Face(get(faceId));
+            Handle(Geom_Surface) geomSurf = BRep_Tool::Surface(face);
+            GeomAPI_ProjectPointOnSurf proj(gp_Pnt(x, y, z), geomSurf);
+            if (proj.NbPoints() == 0) {
+                throw std::runtime_error("projectPointOnFace: no projection found");
+            }
+            gp_Pnt nearest = proj.NearestPoint();
+            double u, v;
+            proj.LowerDistanceParameters(u, v);
+            return {nearest.X(), nearest.Y(), nearest.Z(), u, v, proj.LowerDistance()};
+        }();
+        breakScope.throwIfBroke("projectPointOnFace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("projectPointOnFace");
         throw std::runtime_error(std::string("projectPointOnFace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("projectPointOnFace");
+        throw;
     }
 }
 
 std::string OcctKernel::classifyPointOnFace(uint32_t faceId, double u, double v) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Face face = TopoDS::Face(get(faceId));
-        BRepClass_FaceClassifier classifier(face, gp_Pnt2d(u, v), 1e-6);
-        switch (classifier.State()) {
-        case TopAbs_IN:
-            return "in";
-        case TopAbs_OUT:
-            return "out";
-        case TopAbs_ON:
-            return "on";
-        default:
-            return "unknown";
-        }
+        auto result = [&]() -> std::string {
+            TopoDS_Face face = TopoDS::Face(get(faceId));
+            BRepClass_FaceClassifier classifier(face, gp_Pnt2d(u, v), 1e-6);
+            switch (classifier.State()) {
+            case TopAbs_IN:
+                return "in";
+            case TopAbs_OUT:
+                return "out";
+            case TopAbs_ON:
+                return "on";
+            default:
+                return "unknown";
+            }
+        }();
+        breakScope.throwIfBroke("classifyPointOnFace");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("classifyPointOnFace");
         throw std::runtime_error(std::string("classifyPointOnFace: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("classifyPointOnFace");
+        throw;
     }
 }
 
 bool OcctKernel::hasTriangulation(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        for (TopExp_Explorer ex(get(id), TopAbs_FACE); ex.More(); ex.Next()) {
-            TopLoc_Location loc;
-            auto tri = BRep_Tool::Triangulation(TopoDS::Face(ex.Current()), loc);
-            if (!tri.IsNull())
-                return true;
-        }
-        return false;
+        auto result = [&]() -> bool {
+            for (TopExp_Explorer ex(get(id), TopAbs_FACE); ex.More(); ex.Next()) {
+                TopLoc_Location loc;
+                auto tri = BRep_Tool::Triangulation(TopoDS::Face(ex.Current()), loc);
+                if (!tri.IsNull())
+                    return true;
+            }
+            return false;
+        }();
+        breakScope.throwIfBroke("hasTriangulation");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("hasTriangulation");
         throw std::runtime_error(std::string("hasTriangulation: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("hasTriangulation");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::queryBatch(std::vector<uint32_t> ids) {
+    BreakScope breakScope(*this);
     try {
-        std::vector<double> result;
-        result.reserve(ids.size() * 14);
-        for (size_t i = 0; i < ids.size(); i++) {
-            const auto& shape = get(ids[i]);
-            { GProp_GProps props; BRepGProp::VolumeProperties(shape, props); result.push_back(props.Mass()); }
-            { GProp_GProps props; BRepGProp::SurfaceProperties(shape, props); result.push_back(props.Mass()); }
-            { Bnd_Box box; BRepBndLib::Add(shape, box);
-              if (box.IsVoid()) { for (int j = 0; j < 6; j++) result.push_back(0.0); }
-              else { double xmin,ymin,zmin,xmax,ymax,zmax; box.Get(xmin,ymin,zmin,xmax,ymax,zmax);
-                     result.push_back(xmin); result.push_back(ymin); result.push_back(zmin);
-                     result.push_back(xmax); result.push_back(ymax); result.push_back(zmax); } }
-            { GProp_GProps props; BRepGProp::VolumeProperties(shape, props);
-              gp_Pnt com = props.CentreOfMass();
-              result.push_back(com.X()); result.push_back(com.Y()); result.push_back(com.Z()); }
-            result.push_back(static_cast<double>(shape.ShapeType()));
-            { BRepCheck_Analyzer checker(shape); result.push_back(checker.IsValid() ? 1.0 : 0.0); }
-            result.push_back(0.0);
-        }
+        auto result = [&]() -> std::vector<double> {
+            std::vector<double> result;
+            result.reserve(ids.size() * 14);
+            for (size_t i = 0; i < ids.size(); i++) {
+                const auto& shape = get(ids[i]);
+                { GProp_GProps props; BRepGProp::VolumeProperties(shape, props); result.push_back(props.Mass()); }
+                { GProp_GProps props; BRepGProp::SurfaceProperties(shape, props); result.push_back(props.Mass()); }
+                { Bnd_Box box; BRepBndLib::Add(shape, box);
+                  if (box.IsVoid()) { for (int j = 0; j < 6; j++) result.push_back(0.0); }
+                  else { double xmin,ymin,zmin,xmax,ymax,zmax; box.Get(xmin,ymin,zmin,xmax,ymax,zmax);
+                         result.push_back(xmin); result.push_back(ymin); result.push_back(zmin);
+                         result.push_back(xmax); result.push_back(ymax); result.push_back(zmax); } }
+                { GProp_GProps props; BRepGProp::VolumeProperties(shape, props);
+                  gp_Pnt com = props.CentreOfMass();
+                  result.push_back(com.X()); result.push_back(com.Y()); result.push_back(com.Z()); }
+                result.push_back(static_cast<double>(shape.ShapeType()));
+                { BRepCheck_Analyzer checker(shape); result.push_back(checker.IsValid() ? 1.0 : 0.0); }
+                result.push_back(0.0);
+            }
+            return result;
+        }();
+        breakScope.throwIfBroke("queryBatch");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("queryBatch");
         throw std::runtime_error(std::string("queryBatch: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("queryBatch");
+        throw;
     }
 }

@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,439 +302,592 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === curve ===
 
 std::string OcctKernel::curveType(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        GeomAbs_CurveType ctype;
-        if (shape.ShapeType() == TopAbs_WIRE) {
-            BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
-            ctype = comp.GetType();
-        } else {
-            BRepAdaptor_Curve curve(TopoDS::Edge(shape));
-            ctype = curve.GetType();
-        }
-        switch (ctype) {
-        case GeomAbs_Line:
-            return "line";
-        case GeomAbs_Circle:
-            return "circle";
-        case GeomAbs_Ellipse:
-            return "ellipse";
-        case GeomAbs_Hyperbola:
-            return "hyperbola";
-        case GeomAbs_Parabola:
-            return "parabola";
-        case GeomAbs_BezierCurve:
-            return "bezier";
-        case GeomAbs_BSplineCurve:
-            return "bspline";
-        case GeomAbs_OffsetCurve:
-            return "offset";
-        default:
-            return "other";
-        }
+        auto result = [&]() -> std::string {
+            const auto& shape = get(id);
+            GeomAbs_CurveType ctype;
+            if (shape.ShapeType() == TopAbs_WIRE) {
+                BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
+                ctype = comp.GetType();
+            } else {
+                BRepAdaptor_Curve curve(TopoDS::Edge(shape));
+                ctype = curve.GetType();
+            }
+            switch (ctype) {
+            case GeomAbs_Line:
+                return "line";
+            case GeomAbs_Circle:
+                return "circle";
+            case GeomAbs_Ellipse:
+                return "ellipse";
+            case GeomAbs_Hyperbola:
+                return "hyperbola";
+            case GeomAbs_Parabola:
+                return "parabola";
+            case GeomAbs_BezierCurve:
+                return "bezier";
+            case GeomAbs_BSplineCurve:
+                return "bspline";
+            case GeomAbs_OffsetCurve:
+                return "offset";
+            default:
+                return "other";
+            }
+        }();
+        breakScope.throwIfBroke("curveType");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curveType");
         throw std::runtime_error(std::string("curveType: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curveType");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::curvePointAtParam(uint32_t id, double param) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        gp_Pnt pt;
-        if (shape.ShapeType() == TopAbs_WIRE) {
-            BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
-            pt = comp.Value(param);
-        } else {
-            BRepAdaptor_Curve curve(TopoDS::Edge(shape));
-            pt = curve.Value(param);
-        }
-        return {pt.X(), pt.Y(), pt.Z()};
+        auto result = [&]() -> std::vector<double> {
+            const auto& shape = get(id);
+            gp_Pnt pt;
+            if (shape.ShapeType() == TopAbs_WIRE) {
+                BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
+                pt = comp.Value(param);
+            } else {
+                BRepAdaptor_Curve curve(TopoDS::Edge(shape));
+                pt = curve.Value(param);
+            }
+            return {pt.X(), pt.Y(), pt.Z()};
+        }();
+        breakScope.throwIfBroke("curvePointAtParam");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curvePointAtParam");
         throw std::runtime_error(std::string("curvePointAtParam: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curvePointAtParam");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::curveTangent(uint32_t id, double param) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        gp_Pnt pt;
-        gp_Vec tangent;
-        if (shape.ShapeType() == TopAbs_WIRE) {
-            BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
-            comp.D1(param, pt, tangent);
-        } else {
-            BRepAdaptor_Curve curve(TopoDS::Edge(shape));
-            curve.D1(param, pt, tangent);
-        }
-        if (tangent.Magnitude() > 1e-10) {
-            tangent.Normalize();
-        }
-        return {tangent.X(), tangent.Y(), tangent.Z()};
+        auto result = [&]() -> std::vector<double> {
+            const auto& shape = get(id);
+            gp_Pnt pt;
+            gp_Vec tangent;
+            if (shape.ShapeType() == TopAbs_WIRE) {
+                BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
+                comp.D1(param, pt, tangent);
+            } else {
+                BRepAdaptor_Curve curve(TopoDS::Edge(shape));
+                curve.D1(param, pt, tangent);
+            }
+            if (tangent.Magnitude() > 1e-10) {
+                tangent.Normalize();
+            }
+            return {tangent.X(), tangent.Y(), tangent.Z()};
+        }();
+        breakScope.throwIfBroke("curveTangent");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curveTangent");
         throw std::runtime_error(std::string("curveTangent: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curveTangent");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::curveParameters(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        if (shape.ShapeType() == TopAbs_WIRE) {
-            BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
-            return {comp.FirstParameter(), comp.LastParameter()};
-        }
-        BRepAdaptor_Curve curve(TopoDS::Edge(shape));
-        return {curve.FirstParameter(), curve.LastParameter()};
+        auto result = [&]() -> std::vector<double> {
+            const auto& shape = get(id);
+            if (shape.ShapeType() == TopAbs_WIRE) {
+                BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
+                return {comp.FirstParameter(), comp.LastParameter()};
+            }
+            BRepAdaptor_Curve curve(TopoDS::Edge(shape));
+            return {curve.FirstParameter(), curve.LastParameter()};
+        }();
+        breakScope.throwIfBroke("curveParameters");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curveParameters");
         throw std::runtime_error(std::string("curveParameters: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curveParameters");
+        throw;
     }
 }
 
 bool OcctKernel::curveIsClosed(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        if (shape.ShapeType() == TopAbs_WIRE) {
-            return BRep_Tool::IsClosed(shape);
-        }
-        BRepAdaptor_Curve curve(TopoDS::Edge(shape));
-        return curve.IsClosed();
+        auto result = [&]() -> bool {
+            const auto& shape = get(id);
+            if (shape.ShapeType() == TopAbs_WIRE) {
+                return BRep_Tool::IsClosed(shape);
+            }
+            BRepAdaptor_Curve curve(TopoDS::Edge(shape));
+            return curve.IsClosed();
+        }();
+        breakScope.throwIfBroke("curveIsClosed");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curveIsClosed");
         throw std::runtime_error(std::string("curveIsClosed: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curveIsClosed");
+        throw;
     }
 }
 
 double OcctKernel::curveLength(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        if (shape.ShapeType() == TopAbs_WIRE) {
-            BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
-            return GCPnts_AbscissaPoint::Length(comp);
-        }
-        BRepAdaptor_Curve curve(TopoDS::Edge(shape));
-        return GCPnts_AbscissaPoint::Length(curve);
+        auto result = [&]() -> double {
+            const auto& shape = get(id);
+            if (shape.ShapeType() == TopAbs_WIRE) {
+                BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
+                return GCPnts_AbscissaPoint::Length(comp);
+            }
+            BRepAdaptor_Curve curve(TopoDS::Edge(shape));
+            return GCPnts_AbscissaPoint::Length(curve);
+        }();
+        breakScope.throwIfBroke("curveLength");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curveLength");
         throw std::runtime_error(std::string("curveLength: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curveLength");
+        throw;
     }
 }
 
 uint32_t OcctKernel::interpolatePoints(std::vector<double> flatPoints, bool periodic) {
+    BreakScope breakScope(*this);
     try {
-        int nPts = static_cast<int>(flatPoints.size()) / 3;
-        if (nPts < 2) {
-            throw std::runtime_error("interpolatePoints: need at least 2 points");
-        }
-        
-        Handle(NCollection_HArray1<gp_Pnt>) pts = new NCollection_HArray1<gp_Pnt>(1, nPts);
-        for (int i = 0; i < nPts; i++) {
-            pts->SetValue(i + 1,
-                          gp_Pnt(flatPoints[i * 3], flatPoints[i * 3 + 1], flatPoints[i * 3 + 2]));
-        }
-        
-        GeomAPI_Interpolate interp(pts, periodic, 1e-6);
-        interp.Perform();
-        if (!interp.IsDone()) {
-            throw std::runtime_error("interpolatePoints: interpolation failed");
-        }
-        
-        BRepBuilderAPI_MakeEdge edgeMaker(interp.Curve());
-        if (!edgeMaker.IsDone()) {
-            throw std::runtime_error("interpolatePoints: edge construction failed");
-        }
-        return store(edgeMaker.Shape());
+        auto result = [&]() -> uint32_t {
+            int nPts = static_cast<int>(flatPoints.size()) / 3;
+            if (nPts < 2) {
+                throw std::runtime_error("interpolatePoints: need at least 2 points");
+            }
+            
+            Handle(NCollection_HArray1<gp_Pnt>) pts = new NCollection_HArray1<gp_Pnt>(1, nPts);
+            for (int i = 0; i < nPts; i++) {
+                pts->SetValue(i + 1,
+                              gp_Pnt(flatPoints[i * 3], flatPoints[i * 3 + 1], flatPoints[i * 3 + 2]));
+            }
+            
+            GeomAPI_Interpolate interp(pts, periodic, 1e-6);
+            interp.Perform();
+            if (!interp.IsDone()) {
+                throw std::runtime_error("interpolatePoints: interpolation failed");
+            }
+            
+            BRepBuilderAPI_MakeEdge edgeMaker(interp.Curve());
+            if (!edgeMaker.IsDone()) {
+                throw std::runtime_error("interpolatePoints: edge construction failed");
+            }
+            return store(edgeMaker.Shape());
+        }();
+        breakScope.throwIfBroke("interpolatePoints");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("interpolatePoints");
         throw std::runtime_error(std::string("interpolatePoints: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("interpolatePoints");
+        throw;
     }
 }
 
 uint32_t OcctKernel::interpolatePointsWithTangents(std::vector<double> flatPoints, double startTanX, double startTanY, double startTanZ, double endTanX, double endTanY, double endTanZ) {
+    BreakScope breakScope(*this);
     try {
-        int nPts = static_cast<int>(flatPoints.size()) / 3;
-        if (nPts < 2) {
-            throw std::runtime_error("interpolatePointsWithTangents: need at least 2 points");
-        }
-        Handle(NCollection_HArray1<gp_Pnt>) pts = new NCollection_HArray1<gp_Pnt>(1, nPts);
-        for (int i = 0; i < nPts; i++) {
-            pts->SetValue(i + 1,
-                          gp_Pnt(flatPoints[i * 3], flatPoints[i * 3 + 1], flatPoints[i * 3 + 2]));
-        }
-        GeomAPI_Interpolate interp(pts, false, 1e-6);
-        gp_Vec startTan(startTanX, startTanY, startTanZ);
-        gp_Vec endTan(endTanX, endTanY, endTanZ);
-        interp.Load(startTan, endTan, Standard_True);
-        interp.Perform();
-        if (!interp.IsDone()) {
-            throw std::runtime_error("interpolatePointsWithTangents: interpolation failed");
-        }
-        BRepBuilderAPI_MakeEdge edgeMaker(interp.Curve());
-        if (!edgeMaker.IsDone()) {
-            throw std::runtime_error("interpolatePointsWithTangents: edge construction failed");
-        }
-        return store(edgeMaker.Shape());
+        auto result = [&]() -> uint32_t {
+            int nPts = static_cast<int>(flatPoints.size()) / 3;
+            if (nPts < 2) {
+                throw std::runtime_error("interpolatePointsWithTangents: need at least 2 points");
+            }
+            Handle(NCollection_HArray1<gp_Pnt>) pts = new NCollection_HArray1<gp_Pnt>(1, nPts);
+            for (int i = 0; i < nPts; i++) {
+                pts->SetValue(i + 1,
+                              gp_Pnt(flatPoints[i * 3], flatPoints[i * 3 + 1], flatPoints[i * 3 + 2]));
+            }
+            GeomAPI_Interpolate interp(pts, false, 1e-6);
+            gp_Vec startTan(startTanX, startTanY, startTanZ);
+            gp_Vec endTan(endTanX, endTanY, endTanZ);
+            interp.Load(startTan, endTan, Standard_True);
+            interp.Perform();
+            if (!interp.IsDone()) {
+                throw std::runtime_error("interpolatePointsWithTangents: interpolation failed");
+            }
+            BRepBuilderAPI_MakeEdge edgeMaker(interp.Curve());
+            if (!edgeMaker.IsDone()) {
+                throw std::runtime_error("interpolatePointsWithTangents: edge construction failed");
+            }
+            return store(edgeMaker.Shape());
+        }();
+        breakScope.throwIfBroke("interpolatePointsWithTangents");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("interpolatePointsWithTangents");
         throw std::runtime_error(std::string("interpolatePointsWithTangents: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("interpolatePointsWithTangents");
+        throw;
     }
 }
 
 std::vector<double> OcctKernel::projectPointOnEdge(uint32_t edgeId, double x, double y, double z) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Edge edge = TopoDS::Edge(get(edgeId));
-        double first, last;
-        Handle(Geom_Curve) curve = BRep_Tool::Curve(edge, first, last);
-        if (curve.IsNull()) {
-            throw std::runtime_error("projectPointOnEdge: edge has no 3D curve");
-        }
-        GeomAPI_ProjectPointOnCurve proj(gp_Pnt(x, y, z), curve, first, last);
-        if (proj.NbPoints() < 1) {
-            throw std::runtime_error("projectPointOnEdge: no projection found");
-        }
-        double param = proj.LowerDistanceParameter();
-        gp_Pnt cp;
-        gp_Vec tan;
-        curve->D1(param, cp, tan);
-        return {cp.X(), cp.Y(), cp.Z(), tan.X(), tan.Y(), tan.Z(), param};
+        auto result = [&]() -> std::vector<double> {
+            TopoDS_Edge edge = TopoDS::Edge(get(edgeId));
+            double first, last;
+            Handle(Geom_Curve) curve = BRep_Tool::Curve(edge, first, last);
+            if (curve.IsNull()) {
+                throw std::runtime_error("projectPointOnEdge: edge has no 3D curve");
+            }
+            GeomAPI_ProjectPointOnCurve proj(gp_Pnt(x, y, z), curve, first, last);
+            if (proj.NbPoints() < 1) {
+                throw std::runtime_error("projectPointOnEdge: no projection found");
+            }
+            double param = proj.LowerDistanceParameter();
+            gp_Pnt cp;
+            gp_Vec tan;
+            curve->D1(param, cp, tan);
+            return {cp.X(), cp.Y(), cp.Z(), tan.X(), tan.Y(), tan.Z(), param};
+        }();
+        breakScope.throwIfBroke("projectPointOnEdge");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("projectPointOnEdge");
         throw std::runtime_error(std::string("projectPointOnEdge: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("projectPointOnEdge");
+        throw;
     }
 }
 
 bool OcctKernel::curveIsPeriodic(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        if (shape.ShapeType() == TopAbs_WIRE) {
-            BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
-            return comp.IsPeriodic();
-        }
-        BRepAdaptor_Curve curve(TopoDS::Edge(shape));
-        return curve.IsPeriodic();
+        auto result = [&]() -> bool {
+            const auto& shape = get(id);
+            if (shape.ShapeType() == TopAbs_WIRE) {
+                BRepAdaptor_CompCurve comp(TopoDS::Wire(shape));
+                return comp.IsPeriodic();
+            }
+            BRepAdaptor_Curve curve(TopoDS::Edge(shape));
+            return curve.IsPeriodic();
+        }();
+        breakScope.throwIfBroke("curveIsPeriodic");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curveIsPeriodic");
         throw std::runtime_error(std::string("curveIsPeriodic: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curveIsPeriodic");
+        throw;
     }
 }
 
 uint32_t OcctKernel::approximatePoints(std::vector<double> flatPoints, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        int nPts = static_cast<int>(flatPoints.size()) / 3;
-        if (nPts < 2) {
-            throw std::runtime_error("approximatePoints: need at least 2 points");
-        }
-        
-        NCollection_Array1<gp_Pnt> pts(1, nPts);
-        for (int i = 0; i < nPts; i++) {
-            pts.SetValue(i + 1,
-                         gp_Pnt(flatPoints[i * 3], flatPoints[i * 3 + 1], flatPoints[i * 3 + 2]));
-        }
-        
-        GeomAPI_PointsToBSpline approx(pts, 3, 8, GeomAbs_C2, tolerance);
-        if (!approx.IsDone()) {
-            throw std::runtime_error("approximatePoints: approximation failed");
-        }
-        
-        BRepBuilderAPI_MakeEdge edgeMaker(approx.Curve());
-        if (!edgeMaker.IsDone()) {
-            throw std::runtime_error("approximatePoints: edge construction failed");
-        }
-        return store(edgeMaker.Shape());
+        auto result = [&]() -> uint32_t {
+            int nPts = static_cast<int>(flatPoints.size()) / 3;
+            if (nPts < 2) {
+                throw std::runtime_error("approximatePoints: need at least 2 points");
+            }
+            
+            NCollection_Array1<gp_Pnt> pts(1, nPts);
+            for (int i = 0; i < nPts; i++) {
+                pts.SetValue(i + 1,
+                             gp_Pnt(flatPoints[i * 3], flatPoints[i * 3 + 1], flatPoints[i * 3 + 2]));
+            }
+            
+            GeomAPI_PointsToBSpline approx(pts, 3, 8, GeomAbs_C2, tolerance);
+            if (!approx.IsDone()) {
+                throw std::runtime_error("approximatePoints: approximation failed");
+            }
+            
+            BRepBuilderAPI_MakeEdge edgeMaker(approx.Curve());
+            if (!edgeMaker.IsDone()) {
+                throw std::runtime_error("approximatePoints: edge construction failed");
+            }
+            return store(edgeMaker.Shape());
+        }();
+        breakScope.throwIfBroke("approximatePoints");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("approximatePoints");
         throw std::runtime_error(std::string("approximatePoints: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("approximatePoints");
+        throw;
     }
 }
 
 uint32_t OcctKernel::liftCurve2dToPlane(std::vector<double> flatPoints2d, double planeOx, double planeOy, double planeOz, double planeZx, double planeZy, double planeZz, double planeXx, double planeXy, double planeXz) {
+    BreakScope breakScope(*this);
     try {
-        int nPts = static_cast<int>(flatPoints2d.size()) / 2;
-        if (nPts < 2) {
-            throw std::runtime_error("liftCurve2dToPlane: need at least 2 points");
-        }
-        
-        // Build the plane from origin + Z-axis + X-axis
-        gp_Pnt origin(planeOx, planeOy, planeOz);
-        gp_Dir zDir(planeZx, planeZy, planeZz);
-        gp_Dir xDir(planeXx, planeXy, planeXz);
-        gp_Ax3 ax3(origin, zDir, xDir);
-        gp_Pln plane(ax3);
-        
-        // Create 2D points array
-        Handle(NCollection_HArray1<gp_Pnt2d>) pts2d = new NCollection_HArray1<gp_Pnt2d>(1, nPts);
-        for (int i = 0; i < nPts; i++) {
-            pts2d->SetValue(i + 1, gp_Pnt2d(flatPoints2d[i * 2], flatPoints2d[i * 2 + 1]));
-        }
-        
-        // Interpolate through the 2D points
-        Geom2dAPI_Interpolate interp(pts2d, false, 1e-6);
-        interp.Perform();
-        if (!interp.IsDone()) {
-            throw std::runtime_error("liftCurve2dToPlane: 2D interpolation failed");
-        }
-        
-        // Build 3D edge from 2D curve on plane
-        Handle(Geom_Surface) surface = new Geom_Plane(plane);
-        BRepBuilderAPI_MakeEdge edgeMaker(interp.Curve(), surface);
-        if (!edgeMaker.IsDone()) {
-            throw std::runtime_error("liftCurve2dToPlane: edge construction failed");
-        }
-        return store(edgeMaker.Shape());
+        auto result = [&]() -> uint32_t {
+            int nPts = static_cast<int>(flatPoints2d.size()) / 2;
+            if (nPts < 2) {
+                throw std::runtime_error("liftCurve2dToPlane: need at least 2 points");
+            }
+            
+            // Build the plane from origin + Z-axis + X-axis
+            gp_Pnt origin(planeOx, planeOy, planeOz);
+            gp_Dir zDir(planeZx, planeZy, planeZz);
+            gp_Dir xDir(planeXx, planeXy, planeXz);
+            gp_Ax3 ax3(origin, zDir, xDir);
+            gp_Pln plane(ax3);
+            
+            // Create 2D points array
+            Handle(NCollection_HArray1<gp_Pnt2d>) pts2d = new NCollection_HArray1<gp_Pnt2d>(1, nPts);
+            for (int i = 0; i < nPts; i++) {
+                pts2d->SetValue(i + 1, gp_Pnt2d(flatPoints2d[i * 2], flatPoints2d[i * 2 + 1]));
+            }
+            
+            // Interpolate through the 2D points
+            Geom2dAPI_Interpolate interp(pts2d, false, 1e-6);
+            interp.Perform();
+            if (!interp.IsDone()) {
+                throw std::runtime_error("liftCurve2dToPlane: 2D interpolation failed");
+            }
+            
+            // Build 3D edge from 2D curve on plane
+            Handle(Geom_Surface) surface = new Geom_Plane(plane);
+            BRepBuilderAPI_MakeEdge edgeMaker(interp.Curve(), surface);
+            if (!edgeMaker.IsDone()) {
+                throw std::runtime_error("liftCurve2dToPlane: edge construction failed");
+            }
+            return store(edgeMaker.Shape());
+        }();
+        breakScope.throwIfBroke("liftCurve2dToPlane");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("liftCurve2dToPlane");
         throw std::runtime_error(std::string("liftCurve2dToPlane: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("liftCurve2dToPlane");
+        throw;
     }
 }
 
 NurbsCurveData OcctKernel::getNurbsCurveData(uint32_t edgeId) {
+    BreakScope breakScope(*this);
     try {
-        BRepAdaptor_Curve adaptor(TopoDS::Edge(get(edgeId)));
-        Handle(Geom_BSplineCurve) bspline;
-        if (adaptor.GetType() == GeomAbs_BSplineCurve) {
-            bspline = adaptor.BSpline();
-        } else if (adaptor.GetType() == GeomAbs_BezierCurve) {
-            bspline = GeomConvert::CurveToBSplineCurve(adaptor.Bezier());
-        } else {
-            throw std::runtime_error("getNurbsCurveData: edge is not a BSpline or Bezier curve");
-        }
-        NurbsCurveData result{};
-        result.degree = bspline->Degree();
-        result.rational = bspline->IsRational();
-        result.periodic = bspline->IsPeriodic();
-        
-        // Knots and multiplicities
-        int nKnots = bspline->NbKnots();
-        result.knots.resize(nKnots);
-        result.multiplicities.resize(nKnots);
-        for (int i = 1; i <= nKnots; i++) {
-            result.knots[i - 1] = bspline->Knot(i);
-            result.multiplicities[i - 1] = bspline->Multiplicity(i);
-        }
-        
-        // Poles (control points)
-        int nPoles = bspline->NbPoles();
-        result.poles.resize(nPoles * 3);
-        for (int i = 1; i <= nPoles; i++) {
-            gp_Pnt p = bspline->Pole(i);
-            result.poles[(i - 1) * 3] = p.X();
-            result.poles[(i - 1) * 3 + 1] = p.Y();
-            result.poles[(i - 1) * 3 + 2] = p.Z();
-        }
-        
-        // Weights (only if rational)
-        if (bspline->IsRational()) {
-            result.weights.resize(nPoles);
-            for (int i = 1; i <= nPoles; i++) {
-                result.weights[i - 1] = bspline->Weight(i);
+        auto result = [&]() -> NurbsCurveData {
+            BRepAdaptor_Curve adaptor(TopoDS::Edge(get(edgeId)));
+            Handle(Geom_BSplineCurve) bspline;
+            if (adaptor.GetType() == GeomAbs_BSplineCurve) {
+                bspline = adaptor.BSpline();
+            } else if (adaptor.GetType() == GeomAbs_BezierCurve) {
+                bspline = GeomConvert::CurveToBSplineCurve(adaptor.Bezier());
+            } else {
+                throw std::runtime_error("getNurbsCurveData: edge is not a BSpline or Bezier curve");
             }
-        }
-        
+            NurbsCurveData result{};
+            result.degree = bspline->Degree();
+            result.rational = bspline->IsRational();
+            result.periodic = bspline->IsPeriodic();
+            
+            // Knots and multiplicities
+            int nKnots = bspline->NbKnots();
+            result.knots.resize(nKnots);
+            result.multiplicities.resize(nKnots);
+            for (int i = 1; i <= nKnots; i++) {
+                result.knots[i - 1] = bspline->Knot(i);
+                result.multiplicities[i - 1] = bspline->Multiplicity(i);
+            }
+            
+            // Poles (control points)
+            int nPoles = bspline->NbPoles();
+            result.poles.resize(nPoles * 3);
+            for (int i = 1; i <= nPoles; i++) {
+                gp_Pnt p = bspline->Pole(i);
+                result.poles[(i - 1) * 3] = p.X();
+                result.poles[(i - 1) * 3 + 1] = p.Y();
+                result.poles[(i - 1) * 3 + 2] = p.Z();
+            }
+            
+            // Weights (only if rational)
+            if (bspline->IsRational()) {
+                result.weights.resize(nPoles);
+                for (int i = 1; i <= nPoles; i++) {
+                    result.weights[i - 1] = bspline->Weight(i);
+                }
+            }
+            
+            return result;
+        }();
+        breakScope.throwIfBroke("getNurbsCurveData");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("getNurbsCurveData");
         throw std::runtime_error(std::string("getNurbsCurveData: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("getNurbsCurveData");
+        throw;
     }
 }
 
 uint32_t OcctKernel::curveDegreeElevate(uint32_t edgeId, int elevateBy) {
+    BreakScope breakScope(*this);
     try {
-        BRepAdaptor_Curve adaptor(TopoDS::Edge(get(edgeId)));
-        Handle(Geom_BSplineCurve) bspline;
-        if (adaptor.GetType() == GeomAbs_BSplineCurve) {
-            bspline = Handle(Geom_BSplineCurve)::DownCast(adaptor.BSpline()->Copy());
-        } else if (adaptor.GetType() == GeomAbs_BezierCurve) {
-            bspline = GeomConvert::CurveToBSplineCurve(adaptor.Bezier());
-        } else {
-            throw std::runtime_error("curveDegreeElevate: edge is not a BSpline or Bezier curve");
-        }
-        bspline->IncreaseDegree(bspline->Degree() + elevateBy);
-        BRepBuilderAPI_MakeEdge maker(bspline);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("curveDegreeElevate: edge construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepAdaptor_Curve adaptor(TopoDS::Edge(get(edgeId)));
+            Handle(Geom_BSplineCurve) bspline;
+            if (adaptor.GetType() == GeomAbs_BSplineCurve) {
+                bspline = Handle(Geom_BSplineCurve)::DownCast(adaptor.BSpline()->Copy());
+            } else if (adaptor.GetType() == GeomAbs_BezierCurve) {
+                bspline = GeomConvert::CurveToBSplineCurve(adaptor.Bezier());
+            } else {
+                throw std::runtime_error("curveDegreeElevate: edge is not a BSpline or Bezier curve");
+            }
+            bspline->IncreaseDegree(bspline->Degree() + elevateBy);
+            BRepBuilderAPI_MakeEdge maker(bspline);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("curveDegreeElevate: edge construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("curveDegreeElevate");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curveDegreeElevate");
         throw std::runtime_error(std::string("curveDegreeElevate: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curveDegreeElevate");
+        throw;
     }
 }
 
 uint32_t OcctKernel::curveKnotInsert(uint32_t edgeId, double knot, int times) {
+    BreakScope breakScope(*this);
     try {
-        BRepAdaptor_Curve adaptor(TopoDS::Edge(get(edgeId)));
-        Handle(Geom_BSplineCurve) bspline;
-        if (adaptor.GetType() == GeomAbs_BSplineCurve) {
-            bspline = Handle(Geom_BSplineCurve)::DownCast(adaptor.BSpline()->Copy());
-        } else if (adaptor.GetType() == GeomAbs_BezierCurve) {
-            bspline = GeomConvert::CurveToBSplineCurve(adaptor.Bezier());
-        } else {
-            throw std::runtime_error("curveKnotInsert: edge is not a BSpline or Bezier curve");
-        }
-        bspline->InsertKnot(knot, times, Precision::Confusion());
-        BRepBuilderAPI_MakeEdge maker(bspline);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("curveKnotInsert: edge construction failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepAdaptor_Curve adaptor(TopoDS::Edge(get(edgeId)));
+            Handle(Geom_BSplineCurve) bspline;
+            if (adaptor.GetType() == GeomAbs_BSplineCurve) {
+                bspline = Handle(Geom_BSplineCurve)::DownCast(adaptor.BSpline()->Copy());
+            } else if (adaptor.GetType() == GeomAbs_BezierCurve) {
+                bspline = GeomConvert::CurveToBSplineCurve(adaptor.Bezier());
+            } else {
+                throw std::runtime_error("curveKnotInsert: edge is not a BSpline or Bezier curve");
+            }
+            bspline->InsertKnot(knot, times, Precision::Confusion());
+            BRepBuilderAPI_MakeEdge maker(bspline);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("curveKnotInsert: edge construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("curveKnotInsert");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curveKnotInsert");
         throw std::runtime_error(std::string("curveKnotInsert: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curveKnotInsert");
+        throw;
     }
 }
 
 uint32_t OcctKernel::curveKnotRemove(uint32_t edgeId, double knot, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        BRepAdaptor_Curve adaptor(TopoDS::Edge(get(edgeId)));
-        Handle(Geom_BSplineCurve) bspline;
-        if (adaptor.GetType() == GeomAbs_BSplineCurve) {
-            bspline = Handle(Geom_BSplineCurve)::DownCast(adaptor.BSpline()->Copy());
-        } else if (adaptor.GetType() == GeomAbs_BezierCurve) {
-            bspline = GeomConvert::CurveToBSplineCurve(adaptor.Bezier());
-        } else {
-            throw std::runtime_error("curveKnotRemove: edge is not a BSpline or Bezier curve");
-        }
-        int index = 0;
-        for (int i = 1; i <= bspline->NbKnots(); i++) {
-            if (std::abs(bspline->Knot(i) - knot) <= tolerance) {
-                index = i;
-                break;
+        auto result = [&]() -> uint32_t {
+            BRepAdaptor_Curve adaptor(TopoDS::Edge(get(edgeId)));
+            Handle(Geom_BSplineCurve) bspline;
+            if (adaptor.GetType() == GeomAbs_BSplineCurve) {
+                bspline = Handle(Geom_BSplineCurve)::DownCast(adaptor.BSpline()->Copy());
+            } else if (adaptor.GetType() == GeomAbs_BezierCurve) {
+                bspline = GeomConvert::CurveToBSplineCurve(adaptor.Bezier());
+            } else {
+                throw std::runtime_error("curveKnotRemove: edge is not a BSpline or Bezier curve");
             }
-        }
-        if (index == 0) {
-            throw std::runtime_error("curveKnotRemove: knot value not found");
-        }
-        int mult = bspline->Multiplicity(index);
-        if (!bspline->RemoveKnot(index, mult - 1, tolerance)) {
-            throw std::runtime_error("curveKnotRemove: knot cannot be removed within tolerance");
-        }
-        BRepBuilderAPI_MakeEdge maker(bspline);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("curveKnotRemove: edge construction failed");
-        }
-        return store(maker.Shape());
+            int index = 0;
+            for (int i = 1; i <= bspline->NbKnots(); i++) {
+                if (std::abs(bspline->Knot(i) - knot) <= tolerance) {
+                    index = i;
+                    break;
+                }
+            }
+            if (index == 0) {
+                throw std::runtime_error("curveKnotRemove: knot value not found");
+            }
+            int mult = bspline->Multiplicity(index);
+            if (!bspline->RemoveKnot(index, mult - 1, tolerance)) {
+                throw std::runtime_error("curveKnotRemove: knot cannot be removed within tolerance");
+            }
+            BRepBuilderAPI_MakeEdge maker(bspline);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("curveKnotRemove: edge construction failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("curveKnotRemove");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curveKnotRemove");
         throw std::runtime_error(std::string("curveKnotRemove: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curveKnotRemove");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::curveSplit(uint32_t edgeId, double param) {
+    BreakScope breakScope(*this);
     try {
-        BRepAdaptor_Curve adaptor(TopoDS::Edge(get(edgeId)));
-        Handle(Geom_BSplineCurve) base;
-        if (adaptor.GetType() == GeomAbs_BSplineCurve) {
-            base = adaptor.BSpline();
-        } else if (adaptor.GetType() == GeomAbs_BezierCurve) {
-            base = GeomConvert::CurveToBSplineCurve(adaptor.Bezier());
-        } else {
-            throw std::runtime_error("curveSplit: edge is not a BSpline or Bezier curve");
-        }
-        double first = base->FirstParameter();
-        double last = base->LastParameter();
-        if (param <= first || param >= last) {
-            throw std::runtime_error("curveSplit: parameter out of range");
-        }
-        Handle(Geom_BSplineCurve) left = Handle(Geom_BSplineCurve)::DownCast(base->Copy());
-        Handle(Geom_BSplineCurve) right = Handle(Geom_BSplineCurve)::DownCast(base->Copy());
-        left->Segment(first, param);
-        right->Segment(param, last);
-        BRepBuilderAPI_MakeEdge leftMaker(left);
-        BRepBuilderAPI_MakeEdge rightMaker(right);
-        if (!leftMaker.IsDone() || !rightMaker.IsDone()) {
-            throw std::runtime_error("curveSplit: edge construction failed");
-        }
-        std::vector<uint32_t> result;
-        result.push_back(store(leftMaker.Shape()));
-        result.push_back(store(rightMaker.Shape()));
+        auto result = [&]() -> std::vector<uint32_t> {
+            BRepAdaptor_Curve adaptor(TopoDS::Edge(get(edgeId)));
+            Handle(Geom_BSplineCurve) base;
+            if (adaptor.GetType() == GeomAbs_BSplineCurve) {
+                base = adaptor.BSpline();
+            } else if (adaptor.GetType() == GeomAbs_BezierCurve) {
+                base = GeomConvert::CurveToBSplineCurve(adaptor.Bezier());
+            } else {
+                throw std::runtime_error("curveSplit: edge is not a BSpline or Bezier curve");
+            }
+            double first = base->FirstParameter();
+            double last = base->LastParameter();
+            if (param <= first || param >= last) {
+                throw std::runtime_error("curveSplit: parameter out of range");
+            }
+            Handle(Geom_BSplineCurve) left = Handle(Geom_BSplineCurve)::DownCast(base->Copy());
+            Handle(Geom_BSplineCurve) right = Handle(Geom_BSplineCurve)::DownCast(base->Copy());
+            left->Segment(first, param);
+            right->Segment(param, last);
+            BRepBuilderAPI_MakeEdge leftMaker(left);
+            BRepBuilderAPI_MakeEdge rightMaker(right);
+            if (!leftMaker.IsDone() || !rightMaker.IsDone()) {
+                throw std::runtime_error("curveSplit: edge construction failed");
+            }
+            std::vector<uint32_t> result;
+            result.push_back(store(leftMaker.Shape()));
+            result.push_back(store(rightMaker.Shape()));
+            return result;
+        }();
+        breakScope.throwIfBroke("curveSplit");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("curveSplit");
         throw std::runtime_error(std::string("curveSplit: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("curveSplit");
+        throw;
     }
 }

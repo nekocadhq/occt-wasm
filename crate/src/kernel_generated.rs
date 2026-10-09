@@ -242,6 +242,8 @@ pub(crate) struct GeneratedFuncs {
     fn_checkpoint: TypedFunc<(), u32>,
     fn_release_since: TypedFunc<(u32,), i32>,
     fn_get_shape_count: TypedFunc<(), u32>,
+    fn_set_break_token: TypedFunc<(i32,), i32>,
+    fn_interrupt_flag_address: TypedFunc<(), f64>,
     fn_history_begin: TypedFunc<(), i32>,
     fn_history_end: TypedFunc<(), u32>,
     fn_history_images: TypedFunc<(u32, i32, i32, u32, i32, i32), i32>,
@@ -515,6 +517,9 @@ impl GeneratedFuncs {
             fn_checkpoint: instance.get_typed_func(&mut store, "occt_checkpoint")?,
             fn_release_since: instance.get_typed_func(&mut store, "occt_release_since")?,
             fn_get_shape_count: instance.get_typed_func(&mut store, "occt_get_shape_count")?,
+            fn_set_break_token: instance.get_typed_func(&mut store, "occt_set_break_token")?,
+            fn_interrupt_flag_address: instance
+                .get_typed_func(&mut store, "occt_interrupt_flag_address")?,
             fn_history_begin: instance.get_typed_func(&mut store, "occt_history_begin")?,
             fn_history_end: instance.get_typed_func(&mut store, "occt_history_end")?,
             fn_history_images: instance.get_typed_func(&mut store, "occt_history_images")?,
@@ -4378,6 +4383,26 @@ impl crate::kernel::OcctKernel {
             .fn_get_shape_count
             .call(&mut self.store, ())?;
         self.check_error("get_shape_count")?;
+        Ok(result)
+    }
+
+    pub fn set_break_token(&mut self, token: i32) -> OcctResult<()> {
+        let result = self
+            .generated
+            .fn_set_break_token
+            .call(&mut self.store, (token,))?;
+        if result < 0 {
+            return Err(self.read_last_error("set_break_token"));
+        }
+        Ok(())
+    }
+
+    pub fn interrupt_flag_address(&mut self) -> OcctResult<f64> {
+        let result = self
+            .generated
+            .fn_interrupt_flag_address
+            .call(&mut self.store, ())?;
+        self.check_error("interrupt_flag_address")?;
         Ok(result)
     }
 

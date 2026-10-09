@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,516 +302,699 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === modeling ===
 
 uint32_t OcctKernel::extrude(uint32_t shapeId, double dx, double dy, double dz) {
+    BreakScope breakScope(*this);
     try {
-        BRepPrimAPI_MakePrism maker(get(shapeId), gp_Vec(dx, dy, dz));
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("extrude: construction failed");
-        }
-        return store(normalizeSolidOrientation(maker.Shape()));
+        auto result = [&]() -> uint32_t {
+            BRepPrimAPI_MakePrism maker(get(shapeId), gp_Vec(dx, dy, dz));
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("extrude: construction failed");
+            }
+            return store(normalizeSolidOrientation(maker.Shape()));
+        }();
+        breakScope.throwIfBroke("extrude");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("extrude");
         throw std::runtime_error(std::string("extrude: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("extrude");
+        throw;
     }
 }
 
 uint32_t OcctKernel::revolve(uint32_t shapeId, double px, double py, double pz, double dx, double dy, double dz, double angleRad) {
+    BreakScope breakScope(*this);
     try {
-        BRepPrimAPI_MakeRevol maker(get(shapeId), gp_Ax1(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz)), angleRad);
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("revolve: construction failed");
-        }
-        // A profile face whose normal opposes the axis of revolution yields the same
-        // inside-out solid as extrude; normalize so downstream booleans accept it.
-        return store(normalizeSolidOrientation(maker.Shape()));
+        auto result = [&]() -> uint32_t {
+            BRepPrimAPI_MakeRevol maker(get(shapeId), gp_Ax1(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz)), angleRad);
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("revolve: construction failed");
+            }
+            // A profile face whose normal opposes the axis of revolution yields the same
+            // inside-out solid as extrude; normalize so downstream booleans accept it.
+            return store(normalizeSolidOrientation(maker.Shape()));
+        }();
+        breakScope.throwIfBroke("revolve");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("revolve");
         throw std::runtime_error(std::string("revolve: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("revolve");
+        throw;
     }
 }
 
 uint32_t OcctKernel::fillet(uint32_t solidId, std::vector<uint32_t> edgeIds, double radius) {
+    BreakScope breakScope(*this);
     try {
-        BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidId)));
-        for (uint32_t eid : edgeIds) {
-            maker.Add(radius, TopoDS::Edge(get(eid)));
-        }
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("fillet: operation failed");
-        }
-        record(maker, {get(solidId)});
-        Handle(BRepTools_History) repaired;
-        TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "fillet", true, &repaired);
-        record(repaired);
-        return store(result);
+        auto result = [&]() -> uint32_t {
+            BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidId)));
+            for (uint32_t eid : edgeIds) {
+                maker.Add(radius, TopoDS::Edge(get(eid)));
+            }
+            maker.Build(breakRange());
+            if (!maker.IsDone()) {
+                throw std::runtime_error("fillet: operation failed");
+            }
+            record(maker, {get(solidId)});
+            Handle(BRepTools_History) repaired;
+            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "fillet", true, &repaired);
+            record(repaired);
+            return store(result);
+        }();
+        breakScope.throwIfBroke("fillet");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("fillet");
         throw std::runtime_error(std::string("fillet: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("fillet");
+        throw;
     }
 }
 
 uint32_t OcctKernel::chamfer(uint32_t solidId, std::vector<uint32_t> edgeIds, double distance) {
+    BreakScope breakScope(*this);
     try {
-        BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(get(solidId)));
-        for (uint32_t eid : edgeIds) {
-            maker.Add(distance, TopoDS::Edge(get(eid)));
-        }
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("chamfer: operation failed");
-        }
-        record(maker, {get(solidId)});
-        Handle(BRepTools_History) repaired;
-        TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamfer", true, &repaired);
-        record(repaired);
-        return store(result);
+        auto result = [&]() -> uint32_t {
+            BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(get(solidId)));
+            for (uint32_t eid : edgeIds) {
+                maker.Add(distance, TopoDS::Edge(get(eid)));
+            }
+            maker.Build(breakRange());
+            if (!maker.IsDone()) {
+                throw std::runtime_error("chamfer: operation failed");
+            }
+            record(maker, {get(solidId)});
+            Handle(BRepTools_History) repaired;
+            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamfer", true, &repaired);
+            record(repaired);
+            return store(result);
+        }();
+        breakScope.throwIfBroke("chamfer");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("chamfer");
         throw std::runtime_error(std::string("chamfer: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("chamfer");
+        throw;
     }
 }
 
 uint32_t OcctKernel::chamferDistAngle(uint32_t solidId, std::vector<uint32_t> edgeIds, double distance, double angleDeg) {
+    BreakScope breakScope(*this);
     try {
-        double angleRad = angleDeg * M_PI / 180.0;
-        const auto& solid = get(solidId);
-        BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(solid));
-        for (uint32_t eid : edgeIds) {
-            const TopoDS_Edge& edge = TopoDS::Edge(get(eid));
-            TopoDS_Face adjFace;
-            for (TopExp_Explorer ex(solid, TopAbs_FACE); ex.More(); ex.Next()) {
-                const TopoDS_Face& f = TopoDS::Face(ex.Current());
-                for (TopExp_Explorer ex2(f, TopAbs_EDGE); ex2.More(); ex2.Next()) {
-                    if (ex2.Current().IsSame(edge)) { adjFace = f; break; }
+        auto result = [&]() -> uint32_t {
+            double angleRad = angleDeg * M_PI / 180.0;
+            const auto& solid = get(solidId);
+            BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(solid));
+            for (uint32_t eid : edgeIds) {
+                const TopoDS_Edge& edge = TopoDS::Edge(get(eid));
+                TopoDS_Face adjFace;
+                for (TopExp_Explorer ex(solid, TopAbs_FACE); ex.More(); ex.Next()) {
+                    const TopoDS_Face& f = TopoDS::Face(ex.Current());
+                    for (TopExp_Explorer ex2(f, TopAbs_EDGE); ex2.More(); ex2.Next()) {
+                        if (ex2.Current().IsSame(edge)) { adjFace = f; break; }
+                    }
+                    if (!adjFace.IsNull()) break;
                 }
-                if (!adjFace.IsNull()) break;
+                if (adjFace.IsNull()) {
+                    throw std::runtime_error("chamferDistAngle: no adjacent face found for edge");
+                }
+                maker.AddDA(distance, angleRad, edge, adjFace);
             }
-            if (adjFace.IsNull()) {
-                throw std::runtime_error("chamferDistAngle: no adjacent face found for edge");
+            maker.Build(breakRange());
+            if (!maker.IsDone()) {
+                throw std::runtime_error("chamferDistAngle: operation failed");
             }
-            maker.AddDA(distance, angleRad, edge, adjFace);
-        }
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("chamferDistAngle: operation failed");
-        }
-        return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferDistAngle", true));
+            return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferDistAngle", true));
+        }();
+        breakScope.throwIfBroke("chamferDistAngle");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("chamferDistAngle");
         throw std::runtime_error(std::string("chamferDistAngle: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("chamferDistAngle");
+        throw;
     }
 }
 
 uint32_t OcctKernel::chamferAsymmetric(uint32_t solidId, uint32_t edgeId, double distance1, double distance2, uint32_t referenceFaceId) {
+    BreakScope breakScope(*this);
     try {
-        const auto& solid = get(solidId);
-        const TopoDS_Edge& edge = TopoDS::Edge(get(edgeId));
-        BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(solid));
-        TopoDS_Face refFace;
-        if (referenceFaceId != 0) {
-            refFace = TopoDS::Face(get(referenceFaceId));
-            bool adjacent = false;
-            for (TopExp_Explorer ex(refFace, TopAbs_EDGE); ex.More(); ex.Next()) {
-                if (ex.Current().IsSame(edge)) { adjacent = true; break; }
-            }
-            if (!adjacent) {
-                throw std::runtime_error("chamferAsymmetric: referenceFace is not adjacent to the edge");
-            }
-        } else {
-            for (TopExp_Explorer ex(solid, TopAbs_FACE); ex.More(); ex.Next()) {
-                const TopoDS_Face& f = TopoDS::Face(ex.Current());
-                for (TopExp_Explorer ex2(f, TopAbs_EDGE); ex2.More(); ex2.Next()) {
-                    if (ex2.Current().IsSame(edge)) { refFace = f; break; }
+        auto result = [&]() -> uint32_t {
+            const auto& solid = get(solidId);
+            const TopoDS_Edge& edge = TopoDS::Edge(get(edgeId));
+            BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(solid));
+            TopoDS_Face refFace;
+            if (referenceFaceId != 0) {
+                refFace = TopoDS::Face(get(referenceFaceId));
+                bool adjacent = false;
+                for (TopExp_Explorer ex(refFace, TopAbs_EDGE); ex.More(); ex.Next()) {
+                    if (ex.Current().IsSame(edge)) { adjacent = true; break; }
                 }
-                if (!refFace.IsNull()) break;
+                if (!adjacent) {
+                    throw std::runtime_error("chamferAsymmetric: referenceFace is not adjacent to the edge");
+                }
+            } else {
+                for (TopExp_Explorer ex(solid, TopAbs_FACE); ex.More(); ex.Next()) {
+                    const TopoDS_Face& f = TopoDS::Face(ex.Current());
+                    for (TopExp_Explorer ex2(f, TopAbs_EDGE); ex2.More(); ex2.Next()) {
+                        if (ex2.Current().IsSame(edge)) { refFace = f; break; }
+                    }
+                    if (!refFace.IsNull()) break;
+                }
+                if (refFace.IsNull()) {
+                    throw std::runtime_error("chamferAsymmetric: no adjacent face found for edge");
+                }
             }
-            if (refFace.IsNull()) {
-                throw std::runtime_error("chamferAsymmetric: no adjacent face found for edge");
+            maker.Add(distance1, distance2, edge, refFace);
+            maker.Build(breakRange());
+            if (!maker.IsDone()) {
+                throw std::runtime_error("chamferAsymmetric: operation failed");
             }
-        }
-        maker.Add(distance1, distance2, edge, refFace);
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("chamferAsymmetric: operation failed");
-        }
-        return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferAsymmetric", true));
+            return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferAsymmetric", true));
+        }();
+        breakScope.throwIfBroke("chamferAsymmetric");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("chamferAsymmetric");
         throw std::runtime_error(std::string("chamferAsymmetric: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("chamferAsymmetric");
+        throw;
     }
 }
 
 uint32_t OcctKernel::chamferOnFaces(uint32_t solidId, std::vector<uint32_t> edgeIds, std::vector<uint32_t> faceIds, double distance, double second, bool byAngle) {
+    BreakScope breakScope(*this);
     try {
-        if (edgeIds.size() != faceIds.size()) {
-            throw std::runtime_error("chamferOnFaces: each edge needs one face");
-        }
-        const auto& solid = get(solidId);
-        BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(solid));
-        for (size_t i = 0; i < edgeIds.size(); i++) {
-            const TopoDS_Edge& edge = TopoDS::Edge(get(edgeIds[i]));
-            const TopoDS_Face& face = TopoDS::Face(get(faceIds[i]));
-            bool adjacent = false;
-            for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More(); ex.Next()) {
-                if (ex.Current().IsSame(edge)) { adjacent = true; break; }
+        auto result = [&]() -> uint32_t {
+            if (edgeIds.size() != faceIds.size()) {
+                throw std::runtime_error("chamferOnFaces: each edge needs one face");
             }
-            if (!adjacent) {
-                throw std::runtime_error("chamferOnFaces: a face is not adjacent to its edge");
+            const auto& solid = get(solidId);
+            BRepFilletAPI_MakeChamfer maker(TopoDS::Solid(solid));
+            for (size_t i = 0; i < edgeIds.size(); i++) {
+                const TopoDS_Edge& edge = TopoDS::Edge(get(edgeIds[i]));
+                const TopoDS_Face& face = TopoDS::Face(get(faceIds[i]));
+                bool adjacent = false;
+                for (TopExp_Explorer ex(face, TopAbs_EDGE); ex.More(); ex.Next()) {
+                    if (ex.Current().IsSame(edge)) { adjacent = true; break; }
+                }
+                if (!adjacent) {
+                    throw std::runtime_error("chamferOnFaces: a face is not adjacent to its edge");
+                }
+                if (byAngle) {
+                    maker.AddDA(distance, second * M_PI / 180.0, edge, face);
+                } else {
+                    maker.Add(distance, second, edge, face);
+                }
             }
-            if (byAngle) {
-                maker.AddDA(distance, second * M_PI / 180.0, edge, face);
-            } else {
-                maker.Add(distance, second, edge, face);
+            maker.Build(breakRange());
+            if (!maker.IsDone()) {
+                throw std::runtime_error("chamferOnFaces: operation failed");
             }
-        }
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("chamferOnFaces: operation failed");
-        }
-        record(maker, {solid});
-        Handle(BRepTools_History) repaired;
-        TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferOnFaces", true, &repaired);
-        record(repaired);
-        return store(result);
+            record(maker, {solid});
+            Handle(BRepTools_History) repaired;
+            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "chamferOnFaces", true, &repaired);
+            record(repaired);
+            return store(result);
+        }();
+        breakScope.throwIfBroke("chamferOnFaces");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("chamferOnFaces");
         throw std::runtime_error(std::string("chamferOnFaces: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("chamferOnFaces");
+        throw;
     }
 }
 
 uint32_t OcctKernel::shell(uint32_t solidId, std::vector<uint32_t> faceIds, double thickness, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        NCollection_List<TopoDS_Shape> facesToRemove;
-        for (uint32_t fid : faceIds) {
-            facesToRemove.Append(get(fid));
-        }
-        BRepOffsetAPI_MakeThickSolid maker;
-        maker.MakeThickSolidByJoin(get(solidId), facesToRemove, -thickness, tolerance);
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("shell: operation failed");
-        }
-        record(maker, {get(solidId)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            NCollection_List<TopoDS_Shape> facesToRemove;
+            for (uint32_t fid : faceIds) {
+                facesToRemove.Append(get(fid));
+            }
+            BRepOffsetAPI_MakeThickSolid maker;
+            maker.MakeThickSolidByJoin(get(solidId), facesToRemove, -thickness, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, false,
+                                       breakRange());
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("shell: operation failed");
+            }
+            record(maker, {get(solidId)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("shell");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("shell");
         throw std::runtime_error(std::string("shell: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("shell");
+        throw;
     }
 }
 
 uint32_t OcctKernel::offset(uint32_t solidId, double distance, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        BRepOffsetAPI_MakeOffsetShape maker;
-        maker.PerformByJoin(get(solidId), distance, tolerance);
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("offset: operation failed");
-        }
-        record(maker, {get(solidId)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            BRepOffsetAPI_MakeOffsetShape maker;
+            maker.PerformByJoin(get(solidId), distance, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, false,
+                                breakRange());
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("offset: operation failed");
+            }
+            record(maker, {get(solidId)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("offset");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("offset");
         throw std::runtime_error(std::string("offset: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("offset");
+        throw;
     }
 }
 
 uint32_t OcctKernel::draft(uint32_t shapeId, uint32_t faceId, double angleRad, double dx, double dy, double dz) {
+    BreakScope breakScope(*this);
     try {
-        gp_Dir pullDir(dx, dy, dz);
-        BRepOffsetAPI_DraftAngle maker(get(shapeId));
-        maker.Add(TopoDS::Face(get(faceId)), pullDir, angleRad, gp_Pln());
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("draft: operation failed");
-        }
-        record(maker, {get(shapeId)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            gp_Dir pullDir(dx, dy, dz);
+            BRepOffsetAPI_DraftAngle maker(get(shapeId));
+            maker.Add(TopoDS::Face(get(faceId)), pullDir, angleRad, gp_Pln());
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("draft: operation failed");
+            }
+            record(maker, {get(shapeId)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("draft");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("draft");
         throw std::runtime_error(std::string("draft: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("draft");
+        throw;
     }
 }
 
 uint32_t OcctKernel::thicken(uint32_t shapeId, double thickness, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(shapeId);
-        if (shape.ShapeType() == TopAbs_FACE || shape.ShapeType() == TopAbs_SHELL) {
-            BRepOffset_MakeOffset offsetMaker;
-            offsetMaker.Initialize(shape, thickness, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, true);
-            offsetMaker.MakeOffsetShape();
-            if (!offsetMaker.IsDone()) {
-                throw std::runtime_error("thicken: offset operation failed");
+        auto result = [&]() -> uint32_t {
+            const auto& shape = get(shapeId);
+            if (shape.ShapeType() == TopAbs_FACE || shape.ShapeType() == TopAbs_SHELL) {
+                BRepOffset_MakeOffset offsetMaker;
+                offsetMaker.Initialize(shape, thickness, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, true);
+                offsetMaker.MakeOffsetShape(breakRange());
+                if (!offsetMaker.IsDone()) {
+                    throw std::runtime_error("thicken: offset operation failed");
+                }
+                return store(offsetMaker.Shape());
             }
-            return store(offsetMaker.Shape());
-        }
-        NCollection_List<TopoDS_Shape> emptyList;
-        BRepOffsetAPI_MakeThickSolid maker;
-        maker.MakeThickSolidByJoin(shape, emptyList, thickness, tolerance);
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("thicken: operation failed");
-        }
-        return store(maker.Shape());
+            NCollection_List<TopoDS_Shape> emptyList;
+            BRepOffsetAPI_MakeThickSolid maker;
+            maker.MakeThickSolidByJoin(shape, emptyList, thickness, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, false,
+                                       breakRange());
+            maker.Build();
+            if (!maker.IsDone()) {
+                throw std::runtime_error("thicken: operation failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("thicken");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("thicken");
         throw std::runtime_error(std::string("thicken: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("thicken");
+        throw;
     }
 }
 
 uint32_t OcctKernel::defeature(uint32_t shapeId, std::vector<uint32_t> faceIds, double tolerance) {
+    BreakScope breakScope(*this);
     try {
-        NCollection_List<TopoDS_Shape> facesToRemove;
-        for (uint32_t fid : faceIds) {
-            facesToRemove.Append(get(fid));
-        }
-        BRepAlgoAPI_Defeaturing maker;
-        maker.SetShape(get(shapeId));
-        maker.AddFacesToRemove(facesToRemove);
-        if (tolerance > 0.0) {
-            maker.SetFuzzyValue(tolerance);
-        }
-        maker.Build();
-        if (!maker.IsDone() || maker.HasErrors()) {
-            throw std::runtime_error("defeature: operation failed");
-        }
-        record(maker, {get(shapeId)});
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            NCollection_List<TopoDS_Shape> facesToRemove;
+            for (uint32_t fid : faceIds) {
+                facesToRemove.Append(get(fid));
+            }
+            BRepAlgoAPI_Defeaturing maker;
+            maker.SetShape(get(shapeId));
+            maker.AddFacesToRemove(facesToRemove);
+            if (tolerance > 0.0) {
+                maker.SetFuzzyValue(tolerance);
+            }
+            maker.Build(breakRange());
+            if (!maker.IsDone() || maker.HasErrors()) {
+                throw std::runtime_error("defeature: operation failed");
+            }
+            record(maker, {get(shapeId)});
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("defeature");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("defeature");
         throw std::runtime_error(std::string("defeature: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("defeature");
+        throw;
     }
 }
 
 uint32_t OcctKernel::reverseShape(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        return store(get(id).Reversed());
+        auto result = [&]() -> uint32_t {
+            return store(get(id).Reversed());
+        }();
+        breakScope.throwIfBroke("reverseShape");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("reverseShape");
         throw std::runtime_error(std::string("reverseShape: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("reverseShape");
+        throw;
     }
 }
 
 uint32_t OcctKernel::simplify(uint32_t id) {
+    BreakScope breakScope(*this);
     try {
-        return unifySameDomain(id);
+        auto result = [&]() -> uint32_t {
+            return unifySameDomain(id);
+        }();
+        breakScope.throwIfBroke("simplify");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("simplify");
         throw std::runtime_error(std::string("simplify: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("simplify");
+        throw;
     }
 }
 
 uint32_t OcctKernel::filletVariable(uint32_t solidId, uint32_t edgeId, double startRadius, double endRadius) {
+    BreakScope breakScope(*this);
     try {
-        BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidId)));
-        maker.Add(startRadius, endRadius, TopoDS::Edge(get(edgeId)));
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("filletVariable: operation failed");
-        }
-        return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletVariable", true));
+        auto result = [&]() -> uint32_t {
+            BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidId)));
+            maker.Add(startRadius, endRadius, TopoDS::Edge(get(edgeId)));
+            maker.Build(breakRange());
+            if (!maker.IsDone()) {
+                throw std::runtime_error("filletVariable: operation failed");
+            }
+            return store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletVariable", true));
+        }();
+        breakScope.throwIfBroke("filletVariable");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("filletVariable");
         throw std::runtime_error(std::string("filletVariable: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("filletVariable");
+        throw;
     }
 }
 
 uint32_t OcctKernel::filletLaw(uint32_t solidId, std::vector<uint32_t> edgeIds, std::vector<double> starts, std::vector<int> counts, std::vector<double> positions, std::vector<double> radii) {
+    BreakScope breakScope(*this);
     try {
-        if (starts.size() != 3 * edgeIds.size()) {
-            throw std::runtime_error("filletLaw: each edge needs a start point");
-        }
-        if (counts.size() != edgeIds.size() || positions.size() != radii.size()) {
-            throw std::runtime_error("filletLaw: the counts do not match the edges and the pairs");
-        }
-        size_t total = 0;
-        for (int n : counts) total += n > 0 ? static_cast<size_t>(n) : 0;
-        if (total != positions.size()) {
-            throw std::runtime_error("filletLaw: the counts do not match the edges and the pairs");
-        }
-        BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidId)));
-        size_t offset = 0;
-        for (size_t i = 0; i < edgeIds.size(); i++) {
-            const size_t n = static_cast<size_t>(counts[i]);
-            std::vector<gp_Pnt2d> law;
-            for (size_t k = 0; k < n; k++) law.emplace_back(positions[offset + k], radii[offset + k]);
-            offset += n;
-            if (n < 2 || std::abs(law.front().X()) > 1e-9 || std::abs(law.back().X() - 1.0) > 1e-9) {
-                throw std::runtime_error("filletLaw: a law goes from 0 to 1");
+        auto result = [&]() -> uint32_t {
+            if (starts.size() != 3 * edgeIds.size()) {
+                throw std::runtime_error("filletLaw: each edge needs a start point");
             }
-            for (size_t k = 1; k < n; k++) {
-                if (law[k].X() < law[k - 1].X()) throw std::runtime_error("filletLaw: the positions of a law go up");
+            if (counts.size() != edgeIds.size() || positions.size() != radii.size()) {
+                throw std::runtime_error("filletLaw: the counts do not match the edges and the pairs");
             }
-            const TopoDS_Edge& edge = TopoDS::Edge(get(edgeIds[i]));
-            if (maker.Contour(edge) != 0) continue;
-            maker.Add(law.front().Y(), edge);
-            const int ic = maker.Contour(edge);
-            if (ic == 0) throw std::runtime_error("filletLaw: an edge can not be rounded");
-            if (maker.ClosedAndTangent(ic) && std::abs(law.front().Y() - law.back().Y()) > 1e-9) {
-                throw std::runtime_error("filletLaw: a closed contour needs the same radius at its start and its end");
+            size_t total = 0;
+            for (int n : counts) total += n > 0 ? static_cast<size_t>(n) : 0;
+            if (total != positions.size()) {
+                throw std::runtime_error("filletLaw: the counts do not match the edges and the pairs");
             }
-            const gp_Pnt start(starts[3 * i], starts[3 * i + 1], starts[3 * i + 2]);
-            const gp_Pnt first = BRep_Tool::Pnt(maker.FirstVertex(ic));
-            const gp_Pnt last = BRep_Tool::Pnt(maker.LastVertex(ic));
-            if (last.Distance(start) < first.Distance(start)) {
-                std::vector<gp_Pnt2d> back(law.rbegin(), law.rend());
-                for (auto& p : back) p.SetX(1.0 - p.X());
-                law = back;
-            }
-            // The radius at a relative position of the whole contour.
-            auto radiusAt = [&law](double u) {
-                for (size_t k = 1; k < law.size(); k++) {
-                    if (u <= law[k].X()) {
-                        const double span = law[k].X() - law[k - 1].X();
-                        if (span <= 0) return law[k].Y();
-                        return law[k - 1].Y() + (law[k].Y() - law[k - 1].Y()) * (u - law[k - 1].X()) / span;
+            BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidId)));
+            size_t offset = 0;
+            for (size_t i = 0; i < edgeIds.size(); i++) {
+                const size_t n = static_cast<size_t>(counts[i]);
+                std::vector<gp_Pnt2d> law;
+                for (size_t k = 0; k < n; k++) law.emplace_back(positions[offset + k], radii[offset + k]);
+                offset += n;
+                if (n < 2 || std::abs(law.front().X()) > 1e-9 || std::abs(law.back().X() - 1.0) > 1e-9) {
+                    throw std::runtime_error("filletLaw: a law goes from 0 to 1");
+                }
+                for (size_t k = 1; k < n; k++) {
+                    if (law[k].X() < law[k - 1].X()) throw std::runtime_error("filletLaw: the positions of a law go up");
+                }
+                const TopoDS_Edge& edge = TopoDS::Edge(get(edgeIds[i]));
+                if (maker.Contour(edge) != 0) continue;
+                maker.Add(law.front().Y(), edge);
+                const int ic = maker.Contour(edge);
+                if (ic == 0) throw std::runtime_error("filletLaw: an edge can not be rounded");
+                if (maker.ClosedAndTangent(ic) && std::abs(law.front().Y() - law.back().Y()) > 1e-9) {
+                    throw std::runtime_error("filletLaw: a closed contour needs the same radius at its start and its end");
+                }
+                const gp_Pnt start(starts[3 * i], starts[3 * i + 1], starts[3 * i + 2]);
+                const gp_Pnt first = BRep_Tool::Pnt(maker.FirstVertex(ic));
+                const gp_Pnt last = BRep_Tool::Pnt(maker.LastVertex(ic));
+                if (last.Distance(start) < first.Distance(start)) {
+                    std::vector<gp_Pnt2d> back(law.rbegin(), law.rend());
+                    for (auto& p : back) p.SetX(1.0 - p.X());
+                    law = back;
+                }
+                // The radius at a relative position of the whole contour.
+                auto radiusAt = [&law](double u) {
+                    for (size_t k = 1; k < law.size(); k++) {
+                        if (u <= law[k].X()) {
+                            const double span = law[k].X() - law[k - 1].X();
+                            if (span <= 0) return law[k].Y();
+                            return law[k - 1].Y() + (law[k].Y() - law[k - 1].Y()) * (u - law[k - 1].X()) / span;
+                        }
                     }
+                    return law.back().Y();
+                };
+                const int count = maker.NbEdges(ic);
+                std::vector<double> ends(count + 1, 0.0);
+                for (int j = 1; j <= count; j++) {
+                    BRepAdaptor_Curve curve(maker.Edge(ic, j));
+                    ends[j] = ends[j - 1] + GCPnts_AbscissaPoint::Length(curve);
                 }
-                return law.back().Y();
-            };
-            const int count = maker.NbEdges(ic);
-            std::vector<double> ends(count + 1, 0.0);
-            for (int j = 1; j <= count; j++) {
-                BRepAdaptor_Curve curve(maker.Edge(ic, j));
-                ends[j] = ends[j - 1] + GCPnts_AbscissaPoint::Length(curve);
-            }
-            for (int j = 1; j <= count; j++) {
-                const double from = ends[j - 1] / ends[count];
-                const double to = ends[j] / ends[count];
-                std::vector<gp_Pnt2d> part{gp_Pnt2d(0.0, radiusAt(from))};
-                for (const auto& p : law) {
-                    if (p.X() > from + 1e-9 && p.X() < to - 1e-9) part.emplace_back((p.X() - from) / (to - from), p.Y());
+                for (int j = 1; j <= count; j++) {
+                    const double from = ends[j - 1] / ends[count];
+                    const double to = ends[j] / ends[count];
+                    std::vector<gp_Pnt2d> part{gp_Pnt2d(0.0, radiusAt(from))};
+                    for (const auto& p : law) {
+                        if (p.X() > from + 1e-9 && p.X() < to - 1e-9) part.emplace_back((p.X() - from) / (to - from), p.Y());
+                    }
+                    part.emplace_back(1.0, radiusAt(to));
+                    NCollection_Array1<gp_Pnt2d> uandr(1, static_cast<int>(part.size()));
+                    for (size_t k = 0; k < part.size(); k++) uandr.SetValue(static_cast<int>(k) + 1, part[k]);
+                    maker.SetRadius(uandr, ic, j);
                 }
-                part.emplace_back(1.0, radiusAt(to));
-                NCollection_Array1<gp_Pnt2d> uandr(1, static_cast<int>(part.size()));
-                for (size_t k = 0; k < part.size(); k++) uandr.SetValue(static_cast<int>(k) + 1, part[k]);
-                maker.SetRadius(uandr, ic, j);
             }
-        }
-        maker.Build();
-        if (!maker.IsDone()) {
-            throw std::runtime_error("filletLaw: operation failed");
-        }
-        record(maker, {get(solidId)});
-        Handle(BRepTools_History) repaired;
-        TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletLaw", true, &repaired);
-        record(repaired);
-        return store(result);
+            maker.Build(breakRange());
+            if (!maker.IsDone()) {
+                throw std::runtime_error("filletLaw: operation failed");
+            }
+            record(maker, {get(solidId)});
+            Handle(BRepTools_History) repaired;
+            TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletLaw", true, &repaired);
+            record(repaired);
+            return store(result);
+        }();
+        breakScope.throwIfBroke("filletLaw");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("filletLaw");
         throw std::runtime_error(std::string("filletLaw: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("filletLaw");
+        throw;
     }
 }
 
 std::vector<uint32_t> OcctKernel::filletBatch(std::vector<uint32_t> solidIds, std::vector<int> edgeCounts, std::vector<uint32_t> flatEdgeIds, std::vector<double> radii) {
+    BreakScope breakScope(*this);
     try {
-        if (solidIds.size() != edgeCounts.size() || solidIds.size() != radii.size()) {
-            throw std::runtime_error("filletBatch: solidIds, edgeCounts, and radii must have same length");
-        }
-        size_t edgeOffset = 0;
-        size_t totalEdges = 0;
-        for (size_t i = 0; i < edgeCounts.size(); i++) totalEdges += static_cast<size_t>(edgeCounts[i]);
-        if (flatEdgeIds.size() != totalEdges) {
-            throw std::runtime_error("filletBatch: flatEdgeIds length must equal sum of edgeCounts");
-        }
-        std::vector<uint32_t> results;
-        results.reserve(solidIds.size());
-        try {
-            for (size_t i = 0; i < solidIds.size(); i++) {
-                BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidIds[i])));
-                for (int j = 0; j < edgeCounts[i]; j++) {
-                    maker.Add(radii[i], TopoDS::Edge(get(flatEdgeIds[edgeOffset + j])));
-                }
-                maker.Build();
-                if (!maker.IsDone()) throw std::runtime_error("filletBatch: fillet failed on solid " + std::to_string(i));
-                results.push_back(store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletBatch", true)));
-                edgeOffset += static_cast<size_t>(edgeCounts[i]);
+        auto result = [&]() -> std::vector<uint32_t> {
+            if (solidIds.size() != edgeCounts.size() || solidIds.size() != radii.size()) {
+                throw std::runtime_error("filletBatch: solidIds, edgeCounts, and radii must have same length");
             }
-        } catch (...) {
-            // A mid-batch failure (unfilletable solid or an invalid result) must not
-            // leak the shapes already stored for earlier solids: those have no handle
-            // for JS to release, so they would sit in the arena until releaseAll.
-            for (uint32_t storedId : results) release(storedId);
-            throw;
-        }
-        return results;
+            size_t edgeOffset = 0;
+            size_t totalEdges = 0;
+            for (size_t i = 0; i < edgeCounts.size(); i++) totalEdges += static_cast<size_t>(edgeCounts[i]);
+            if (flatEdgeIds.size() != totalEdges) {
+                throw std::runtime_error("filletBatch: flatEdgeIds length must equal sum of edgeCounts");
+            }
+            std::vector<uint32_t> results;
+            results.reserve(solidIds.size());
+            try {
+                for (size_t i = 0; i < solidIds.size(); i++) {
+                    BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidIds[i])));
+                    for (int j = 0; j < edgeCounts[i]; j++) {
+                        maker.Add(radii[i], TopoDS::Edge(get(flatEdgeIds[edgeOffset + j])));
+                    }
+                    maker.Build(breakRange());
+                    if (!maker.IsDone()) throw std::runtime_error("filletBatch: fillet failed on solid " + std::to_string(i));
+                    results.push_back(store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), "filletBatch", true)));
+                    edgeOffset += static_cast<size_t>(edgeCounts[i]);
+                }
+            } catch (...) {
+                // A mid-batch failure (unfilletable solid or an invalid result) must not
+                // leak the shapes already stored for earlier solids: those have no handle
+                // for JS to release, so they would sit in the arena until releaseAll.
+                for (uint32_t storedId : results) release(storedId);
+                throw;
+            }
+            return results;
+        }();
+        breakScope.throwIfBroke("filletBatch");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("filletBatch");
         throw std::runtime_error(std::string("filletBatch: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("filletBatch");
+        throw;
     }
 }
 
 uint32_t OcctKernel::offsetWire2D(uint32_t wireId, double offset, int joinType) {
+    BreakScope breakScope(*this);
     try {
-        GeomAbs_JoinType jt;
-        switch (joinType) {
-        case 1: jt = GeomAbs_Intersection; break;
-        case 2: jt = GeomAbs_Tangent; break;
-        default: jt = GeomAbs_Arc; break;
-        }
-        BRepOffsetAPI_MakeOffset maker(TopoDS::Wire(get(wireId)), jt);
-        maker.Perform(offset);
-        if (!maker.IsDone()) {
-            throw std::runtime_error("offsetWire2D: operation failed");
-        }
-        return store(maker.Shape());
+        auto result = [&]() -> uint32_t {
+            GeomAbs_JoinType jt;
+            switch (joinType) {
+            case 1: jt = GeomAbs_Intersection; break;
+            case 2: jt = GeomAbs_Tangent; break;
+            default: jt = GeomAbs_Arc; break;
+            }
+            BRepOffsetAPI_MakeOffset maker(TopoDS::Wire(get(wireId)), jt);
+            maker.Perform(offset);
+            if (!maker.IsDone()) {
+                throw std::runtime_error("offsetWire2D: operation failed");
+            }
+            return store(maker.Shape());
+        }();
+        breakScope.throwIfBroke("offsetWire2D");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("offsetWire2D");
         throw std::runtime_error(std::string("offsetWire2D: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("offsetWire2D");
+        throw;
     }
 }
 
 uint32_t OcctKernel::reverseSurfaceU(uint32_t faceId) {
+    BreakScope breakScope(*this);
     try {
-        TopoDS_Face face = TopoDS::Face(get(faceId));
-        Handle(Geom_Surface) surf = BRep_Tool::Surface(face);
-        if (surf.IsNull()) {
-            throw std::runtime_error("reverseSurfaceU: face has no geometric surface");
-        }
-        Standard_Real u1, u2, v1, v2;
-        BRepTools::UVBounds(face, u1, u2, v1, v2);
-        Standard_Real ru1 = surf->UReversedParameter(u2);
-        Standard_Real ru2 = surf->UReversedParameter(u1);
-        Handle(Geom_Surface) reversed = Handle(Geom_Surface)::DownCast(surf->Copy());
-        reversed->UReverse();
-        BRepBuilderAPI_MakeFace mkFace(reversed, ru1, ru2, v1, v2, Precision::Confusion());
-        if (!mkFace.IsDone()) {
-            throw std::runtime_error("reverseSurfaceU: face construction failed");
-        }
-        return store(mkFace.Face());
+        auto result = [&]() -> uint32_t {
+            TopoDS_Face face = TopoDS::Face(get(faceId));
+            Handle(Geom_Surface) surf = BRep_Tool::Surface(face);
+            if (surf.IsNull()) {
+                throw std::runtime_error("reverseSurfaceU: face has no geometric surface");
+            }
+            Standard_Real u1, u2, v1, v2;
+            BRepTools::UVBounds(face, u1, u2, v1, v2);
+            Standard_Real ru1 = surf->UReversedParameter(u2);
+            Standard_Real ru2 = surf->UReversedParameter(u1);
+            Handle(Geom_Surface) reversed = Handle(Geom_Surface)::DownCast(surf->Copy());
+            reversed->UReverse();
+            BRepBuilderAPI_MakeFace mkFace(reversed, ru1, ru2, v1, v2, Precision::Confusion());
+            if (!mkFace.IsDone()) {
+                throw std::runtime_error("reverseSurfaceU: face construction failed");
+            }
+            return store(mkFace.Face());
+        }();
+        breakScope.throwIfBroke("reverseSurfaceU");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("reverseSurfaceU");
         throw std::runtime_error(std::string("reverseSurfaceU: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("reverseSurfaceU");
+        throw;
     }
 }
 
 uint32_t OcctKernel::draftPrism(uint32_t shapeId, double dx, double dy, double dz, double angleDeg) {
+    BreakScope breakScope(*this);
     try {
-        // Step 1: Straight extrude
-        gp_Vec extrudeDir(dx, dy, dz);
-        BRepPrimAPI_MakePrism prism(get(shapeId), extrudeDir);
-        prism.Build();
-        if (!prism.IsDone()) {
-            throw std::runtime_error("draftPrism: extrusion failed");
-        }
-        
-        double angleRad = angleDeg * M_PI / 180.0;
-        if (std::abs(angleRad) < 1e-10) {
-            // No taper requested — return straight extrusion
-            return store(prism.Shape());
-        }
-        
-        // Neutral plane: base of the input shape, perpendicular to extrude direction.
-        // Compute centroid of input shape bounding box as a point on the base plane.
-        Bnd_Box bbox;
-        BRepBndLib::Add(get(shapeId), bbox);
-        double xmin, ymin, zmin, xmax, ymax, zmax;
-        bbox.Get(xmin, ymin, zmin, xmax, ymax, zmax);
-        gp_Pnt center((xmin + xmax) / 2.0, (ymin + ymax) / 2.0, (zmin + zmax) / 2.0);
-        gp_Dir pullDir(dx, dy, dz);
-        gp_Pln neutralPlane(center, pullDir);
-        
-        // Step 2: Apply draft angle to lateral faces generated by the extrusion
-        BRepOffsetAPI_DraftAngle drafter(prism.Shape());
-        
-        // Iterate edges of the input shape; for each edge, MakePrism generates a lateral face
-        for (TopExp_Explorer ex(get(shapeId), TopAbs_EDGE); ex.More(); ex.Next()) {
-            const auto& genList = prism.Generated(ex.Current());
-            for (auto it = genList.begin(); it != genList.end(); ++it) {
-                if ((*it).ShapeType() == TopAbs_FACE) {
-                    drafter.Add(TopoDS::Face(*it), pullDir, angleRad, neutralPlane);
+        auto result = [&]() -> uint32_t {
+            // Step 1: Straight extrude
+            gp_Vec extrudeDir(dx, dy, dz);
+            BRepPrimAPI_MakePrism prism(get(shapeId), extrudeDir);
+            prism.Build();
+            if (!prism.IsDone()) {
+                throw std::runtime_error("draftPrism: extrusion failed");
+            }
+            
+            double angleRad = angleDeg * M_PI / 180.0;
+            if (std::abs(angleRad) < 1e-10) {
+                // No taper requested — return straight extrusion
+                return store(prism.Shape());
+            }
+            
+            // Neutral plane: base of the input shape, perpendicular to extrude direction.
+            // Compute centroid of input shape bounding box as a point on the base plane.
+            Bnd_Box bbox;
+            BRepBndLib::Add(get(shapeId), bbox);
+            double xmin, ymin, zmin, xmax, ymax, zmax;
+            bbox.Get(xmin, ymin, zmin, xmax, ymax, zmax);
+            gp_Pnt center((xmin + xmax) / 2.0, (ymin + ymax) / 2.0, (zmin + zmax) / 2.0);
+            gp_Dir pullDir(dx, dy, dz);
+            gp_Pln neutralPlane(center, pullDir);
+            
+            // Step 2: Apply draft angle to lateral faces generated by the extrusion
+            BRepOffsetAPI_DraftAngle drafter(prism.Shape());
+            
+            // Iterate edges of the input shape; for each edge, MakePrism generates a lateral face
+            for (TopExp_Explorer ex(get(shapeId), TopAbs_EDGE); ex.More(); ex.Next()) {
+                const auto& genList = prism.Generated(ex.Current());
+                for (auto it = genList.begin(); it != genList.end(); ++it) {
+                    if ((*it).ShapeType() == TopAbs_FACE) {
+                        drafter.Add(TopoDS::Face(*it), pullDir, angleRad, neutralPlane);
+                    }
                 }
             }
-        }
-        
-        drafter.Build();
-        if (!drafter.IsDone()) {
-            throw std::runtime_error("draftPrism: draft angle application failed");
-        }
-        return store(drafter.Shape());
+            
+            drafter.Build();
+            if (!drafter.IsDone()) {
+                throw std::runtime_error("draftPrism: draft angle application failed");
+            }
+            return store(drafter.Shape());
+        }();
+        breakScope.throwIfBroke("draftPrism");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("draftPrism");
         throw std::runtime_error(std::string("draftPrism: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("draftPrism");
+        throw;
     }
 }

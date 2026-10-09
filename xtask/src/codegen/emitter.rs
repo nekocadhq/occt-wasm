@@ -35,34 +35,68 @@ fn param_list(params: &[FacadeParam]) -> String {
         .join(", ")
 }
 
+/// Emit a method whose body runs inside a [`BreakScope`] of the kernel.
+///
+/// The body runs in a lambda, so the method also checks for a user break when
+/// the body returns normally: a stopped OCCT algorithm can give a part of its
+/// result with no error. Each catch checks too, so a stopped method throws
+/// `"<name>: interrupted"` in place of its own failure, and releases each shape
+/// that it stored. `body` is the C++ of the lambda, with no indent.
+fn emit_guarded(buf: &mut String, spec: &MethodSpec, body: &str) {
+    let name = spec.name;
+    let ret = cpp_return_type(spec.return_type);
+    let is_void = matches!(spec.return_type, ReturnType::Void);
+
+    let _ = writeln!(
+        buf,
+        "{ret} OcctKernel::{name}({params}) {{",
+        params = param_list(spec.params)
+    );
+    let _ = writeln!(buf, "    BreakScope breakScope(*this);");
+    let _ = writeln!(buf, "    try {{");
+    if is_void {
+        let _ = writeln!(buf, "        [&]() -> void {{");
+    } else {
+        let _ = writeln!(buf, "        auto result = [&]() -> {ret} {{");
+    }
+    for line in body.lines() {
+        let _ = writeln!(buf, "            {line}");
+    }
+    let _ = writeln!(buf, "        }}();");
+    let _ = writeln!(buf, "        breakScope.throwIfBroke(\"{name}\");");
+    if !is_void {
+        let _ = writeln!(buf, "        return result;");
+    }
+    let _ = writeln!(buf, "    }} catch (const Standard_Failure& e) {{");
+    let _ = writeln!(buf, "        breakScope.throwIfBroke(\"{name}\");");
+    let _ = writeln!(
+        buf,
+        "        throw std::runtime_error(std::string(\"{name}: \") + e.what());"
+    );
+    let _ = writeln!(buf, "    }} catch (const std::runtime_error&) {{");
+    let _ = writeln!(buf, "        breakScope.throwIfBroke(\"{name}\");");
+    let _ = writeln!(buf, "        throw;");
+    let _ = writeln!(buf, "    }}");
+    let _ = writeln!(buf, "}}");
+}
+
 /// Emit a `SimpleShape` method body.
 fn emit_simple_shape(buf: &mut String, spec: &MethodSpec) {
     let name = spec.name;
     let cls = spec.occt_class;
     let args = spec.ctor_args;
 
+    let mut body = String::new();
+    let _ = writeln!(body, "{cls} maker({args});");
+    let _ = writeln!(body, "maker.Build();");
+    let _ = writeln!(body, "if (!maker.IsDone()) {{");
     let _ = writeln!(
-        buf,
-        "uint32_t OcctKernel::{name}({params}) {{",
-        params = param_list(spec.params)
+        body,
+        "    throw std::runtime_error(\"{name}: construction failed\");"
     );
-    let _ = writeln!(buf, "    try {{");
-    let _ = writeln!(buf, "        {cls} maker({args});");
-    let _ = writeln!(buf, "        maker.Build();");
-    let _ = writeln!(buf, "        if (!maker.IsDone()) {{");
-    let _ = writeln!(
-        buf,
-        "            throw std::runtime_error(\"{name}: construction failed\");"
-    );
-    let _ = writeln!(buf, "        }}");
-    let _ = writeln!(buf, "        return store(maker.Shape());");
-    let _ = writeln!(buf, "    }} catch (const Standard_Failure& e) {{");
-    let _ = writeln!(
-        buf,
-        "        throw std::runtime_error(std::string(\"{name}: \") + e.what());"
-    );
-    let _ = writeln!(buf, "    }}");
-    let _ = writeln!(buf, "}}");
+    let _ = writeln!(body, "}}");
+    let _ = writeln!(body, "return store(maker.Shape());");
+    emit_guarded(buf, spec, &body);
 }
 
 /// Split `ctor_args` at its top-level commas: `"get(a), get(b)"` gives
@@ -94,7 +128,7 @@ fn split_top_level_args(args: &str) -> Vec<&str> {
 /// all the work again. `SetNonDestructive` keeps the boolean from raising the
 /// tolerances of its inputs in place, since the caller can use them again.
 /// No `SetUseOBB`: the oriented box of a half-space is empty, and the boolean
-/// then drops it.
+/// then drops it. The build gets the break range, so a user break stops it.
 fn emit_boolean_op(buf: &mut String, spec: &MethodSpec) {
     let name = spec.name;
     let cls = spec.occt_class;
@@ -102,59 +136,44 @@ fn emit_boolean_op(buf: &mut String, spec: &MethodSpec) {
     let operands = split_top_level_args(args);
     let (objects, tools) = operands.split_at(1.min(operands.len()));
 
-    let _ = writeln!(
-        buf,
-        "uint32_t OcctKernel::{name}({params}) {{",
-        params = param_list(spec.params)
-    );
-    let _ = writeln!(buf, "    try {{");
-    let _ = writeln!(buf, "        NCollection_List<TopoDS_Shape> arguments;");
+    let mut body = String::new();
+    let _ = writeln!(body, "NCollection_List<TopoDS_Shape> arguments;");
     for object in objects {
-        let _ = writeln!(buf, "        arguments.Append({object});");
+        let _ = writeln!(body, "arguments.Append({object});");
     }
-    let _ = writeln!(buf, "        NCollection_List<TopoDS_Shape> tools;");
+    let _ = writeln!(body, "NCollection_List<TopoDS_Shape> tools;");
     for tool in tools {
-        let _ = writeln!(buf, "        tools.Append({tool});");
+        let _ = writeln!(body, "tools.Append({tool});");
     }
-    let _ = writeln!(buf, "        {cls} op;");
-    let _ = writeln!(buf, "        op.SetArguments(arguments);");
-    let _ = writeln!(buf, "        op.SetTools(tools);");
-    let _ = writeln!(buf, "        op.SetNonDestructive(Standard_True);");
-    let _ = writeln!(buf, "        op.SetRunParallel(Standard_True);");
-    let _ = writeln!(buf, "        op.Build();");
-    let _ = writeln!(buf, "        if (!op.IsDone() || op.HasErrors()) {{");
+    let _ = writeln!(body, "{cls} op;");
+    let _ = writeln!(body, "op.SetArguments(arguments);");
+    let _ = writeln!(body, "op.SetTools(tools);");
+    let _ = writeln!(body, "op.SetNonDestructive(Standard_True);");
+    let _ = writeln!(body, "op.SetRunParallel(Standard_True);");
+    let _ = writeln!(body, "op.Build(breakRange());");
+    let _ = writeln!(body, "if (!op.IsDone() || op.HasErrors()) {{");
     let _ = writeln!(
-        buf,
-        "            throw std::runtime_error(\"{name}: boolean operation failed\");"
+        body,
+        "    throw std::runtime_error(\"{name}: boolean operation failed\");"
     );
-    let _ = writeln!(buf, "        }}");
-    let _ = writeln!(buf, "        record(op, {{{args}}});");
-    let _ = writeln!(buf, "        return store(op.Shape());");
-    let _ = writeln!(buf, "    }} catch (const Standard_Failure& e) {{");
-    let _ = writeln!(
-        buf,
-        "        throw std::runtime_error(std::string(\"{name}: \") + e.what());"
-    );
-    let _ = writeln!(buf, "    }}");
-    let _ = writeln!(buf, "}}");
+    let _ = writeln!(body, "}}");
+    let _ = writeln!(body, "record(op, {{{args}}});");
+    let _ = writeln!(body, "return store(op.Shape());");
+    emit_guarded(buf, spec, &body);
 }
 
 /// Emit a `FilletLike` method body.
 ///
 /// Expects params in order: `ShapeId` (solid), `VectorShapeIds` (edges/faces),
-/// then one or more scalar params (radius, distance, etc.).
+/// then one or more scalar params (radius, distance, etc.). The build gets the
+/// break range, which the fork of OCCT gives to `ChFi3d_Builder::Compute`.
 fn emit_fillet_like(buf: &mut String, spec: &MethodSpec) {
     let name = spec.name;
     let cls = spec.occt_class;
     let args = spec.ctor_args;
 
-    let _ = writeln!(
-        buf,
-        "uint32_t OcctKernel::{name}({params}) {{",
-        params = param_list(spec.params)
-    );
-    let _ = writeln!(buf, "    try {{");
-    let _ = writeln!(buf, "        {cls} maker({args});");
+    let mut body = String::new();
+    let _ = writeln!(body, "{cls} maker({args});");
 
     // Find the vector param and the scalar param(s) for the Add() call.
     let vec_param = spec.params.iter().find_map(|p| {
@@ -175,41 +194,35 @@ fn emit_fillet_like(buf: &mut String, spec: &MethodSpec) {
 
     if let Some(vec_name) = vec_param {
         let scalar_args = scalar_params.join(", ");
-        let _ = writeln!(buf, "        for (uint32_t eid : {vec_name}) {{");
+        let _ = writeln!(body, "for (uint32_t eid : {vec_name}) {{");
         let _ = writeln!(
-            buf,
-            "            maker.Add({scalar_args}, TopoDS::Edge(get(eid)));"
+            body,
+            "    maker.Add({scalar_args}, TopoDS::Edge(get(eid)));"
         );
-        let _ = writeln!(buf, "        }}");
+        let _ = writeln!(body, "}}");
     }
 
-    let _ = writeln!(buf, "        maker.Build();");
-    let _ = writeln!(buf, "        if (!maker.IsDone()) {{");
+    let _ = writeln!(body, "maker.Build(breakRange());");
+    let _ = writeln!(body, "if (!maker.IsDone()) {{");
     let _ = writeln!(
-        buf,
-        "            throw std::runtime_error(\"{name}: operation failed\");"
+        body,
+        "    throw std::runtime_error(\"{name}: operation failed\");"
     );
-    let _ = writeln!(buf, "        }}");
+    let _ = writeln!(body, "}}");
     if let Some(solid) = spec.params.iter().find_map(|p| match p {
         FacadeParam::ShapeId(n) => Some(*n),
         _ => None,
     }) {
-        let _ = writeln!(buf, "        record(maker, {{get({solid})}});");
+        let _ = writeln!(body, "record(maker, {{get({solid})}});");
     }
-    let _ = writeln!(buf, "        Handle(BRepTools_History) repaired;");
+    let _ = writeln!(body, "Handle(BRepTools_History) repaired;");
     let _ = writeln!(
-        buf,
-        "        TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"{name}\", true, &repaired);"
+        body,
+        "TopoDS_Shape result = validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"{name}\", true, &repaired);"
     );
-    let _ = writeln!(buf, "        record(repaired);");
-    let _ = writeln!(buf, "        return store(result);");
-    let _ = writeln!(buf, "    }} catch (const Standard_Failure& e) {{");
-    let _ = writeln!(
-        buf,
-        "        throw std::runtime_error(std::string(\"{name}: \") + e.what());"
-    );
-    let _ = writeln!(buf, "    }}");
-    let _ = writeln!(buf, "}}");
+    let _ = writeln!(body, "record(repaired);");
+    let _ = writeln!(body, "return store(result);");
+    emit_guarded(buf, spec, &body);
 }
 
 /// Emit a `SetupShape` method body.
@@ -217,36 +230,19 @@ fn emit_fillet_like(buf: &mut String, spec: &MethodSpec) {
 /// Emits `setup_code` verbatim, then constructs the OCCT class with `ctor_args`,
 /// and stores the result. No `Build()`/`IsDone()` check.
 fn emit_setup_shape(buf: &mut String, spec: &MethodSpec) {
-    let name = spec.name;
     let cls = spec.occt_class;
     let args = spec.ctor_args;
 
-    let _ = writeln!(
-        buf,
-        "uint32_t OcctKernel::{name}({params}) {{",
-        params = param_list(spec.params)
-    );
-    let _ = writeln!(buf, "    try {{");
-
-    // Emit setup code lines with proper indentation.
-    if !spec.setup_code.is_empty() {
-        for line in spec.setup_code.lines() {
-            let _ = writeln!(buf, "        {line}");
-        }
+    let mut body = String::new();
+    for line in spec.setup_code.lines() {
+        let _ = writeln!(body, "{line}");
     }
-
-    let _ = writeln!(buf, "        {cls} maker({args});");
+    let _ = writeln!(body, "{cls} maker({args});");
     // A transform and a copy make each face of their input again, and the history tells which.
     let input = args.split(',').next().unwrap_or_default().trim();
-    let _ = writeln!(buf, "        record(maker, {{{input}}});");
-    let _ = writeln!(buf, "        return store(maker.Shape());");
-    let _ = writeln!(buf, "    }} catch (const Standard_Failure& e) {{");
-    let _ = writeln!(
-        buf,
-        "        throw std::runtime_error(std::string(\"{name}: \") + e.what());"
-    );
-    let _ = writeln!(buf, "    }}");
-    let _ = writeln!(buf, "}}");
+    let _ = writeln!(body, "record(maker, {{{input}}});");
+    let _ = writeln!(body, "return store(maker.Shape());");
+    emit_guarded(buf, spec, &body);
 }
 
 /// Map a `ReturnType` to its C++ type spelling.
@@ -274,27 +270,7 @@ const fn cpp_return_type(ret: ReturnType) -> &'static str {
 
 /// Emit a `CustomBody` method — the `setup_code` field contains the complete body.
 fn emit_custom_body(buf: &mut String, spec: &MethodSpec) {
-    let name = spec.name;
-    let ret_type = cpp_return_type(spec.return_type);
-
-    let _ = writeln!(
-        buf,
-        "{ret_type} OcctKernel::{name}({params}) {{",
-        params = param_list(spec.params)
-    );
-    let _ = writeln!(buf, "    try {{");
-
-    for line in spec.setup_code.lines() {
-        let _ = writeln!(buf, "        {line}");
-    }
-
-    let _ = writeln!(buf, "    }} catch (const Standard_Failure& e) {{");
-    let _ = writeln!(
-        buf,
-        "        throw std::runtime_error(std::string(\"{name}: \") + e.what());"
-    );
-    let _ = writeln!(buf, "    }}");
-    let _ = writeln!(buf, "}}");
+    emit_guarded(buf, spec, spec.setup_code);
 }
 
 /// Emit a `CustomBodyRaw` method — `setup_code` is the full body, emitted with
@@ -1012,7 +988,7 @@ mod tests {
 
         // The two-shape constructor builds at once, so a Build() after it does the work again.
         assert!(body.contains("BRepAlgoAPI_Fuse op;"));
-        assert_eq!(body.matches("Build()").count(), 1);
+        assert_eq!(body.matches(".Build(").count(), 1);
         assert!(body.contains("op.SetArguments(arguments);"));
         assert!(body.contains("arguments.Append(get(a));"));
         assert!(body.contains("op.SetTools(tools);"));
@@ -1023,7 +999,7 @@ mod tests {
         // The oriented box of an infinite solid (a half-space) is empty, so OBB drops it: a cut then keeps all.
         assert!(!body.contains("SetUseOBB"));
         let set = body.find("SetNonDestructive").expect("set");
-        let build = body.find("op.Build()").expect("build");
+        let build = body.find("op.Build(breakRange())").expect("build");
         assert!(set < build);
     }
 
@@ -1035,6 +1011,91 @@ mod tests {
         assert!(output.contains("for (uint32_t eid : edgeIds)"));
         assert!(output.contains("maker.Add(radius, TopoDS::Edge(get(eid)))"));
         assert!(output.contains("#include <TopoDS.hxx>"));
+    }
+
+    #[test]
+    fn kernel_algorithms_get_the_break_range() {
+        let output = emit_kernel(&[&FUSE, &FILLET]);
+        assert!(output.contains("op.Build(breakRange());"));
+        assert!(output.contains("maker.Build(breakRange());"));
+        assert!(!output.contains("Build();"));
+    }
+
+    #[test]
+    fn kernel_methods_throw_interrupted_after_a_break() {
+        static IS_VALID: MethodSpec = MethodSpec {
+            name: "isValid",
+            kind: MethodKind::CustomBody,
+            params: &[FacadeParam::ShapeId("id")],
+            return_type: ReturnType::Bool,
+            occt_class: "",
+            ctor_args: "",
+            setup_code: "return true;",
+            includes: &[],
+            category: "healing",
+        };
+        for spec in [&MAKE_BOX, &FUSE, &FILLET, &IS_VALID] {
+            let output = emit_kernel(&[spec]);
+            let name = spec.name;
+            let check = format!("breakScope.throwIfBroke(\"{name}\");");
+            assert!(output.contains("BreakScope breakScope(*this);"), "{name}");
+            // One check where the body returns, one in each catch.
+            assert_eq!(output.matches(check.as_str()).count(), 3, "{name}");
+            assert!(
+                output.contains("} catch (const std::runtime_error&) {"),
+                "{name}"
+            );
+            // The body runs in a lambda, so the check also sees a normal return.
+            let ret = cpp_return_type(spec.return_type);
+            assert!(
+                output.contains(&format!("auto result = [&]() -> {ret} {{")),
+                "{name}"
+            );
+            let body_end = output.find("}();").expect("lambda call");
+            let checked = output.find(check.as_str()).expect("check");
+            assert!(body_end < checked, "{name}");
+        }
+    }
+
+    #[test]
+    fn void_methods_check_the_break_after_the_body() {
+        static BUILD_CURVES: MethodSpec = MethodSpec {
+            name: "buildCurves3d",
+            kind: MethodKind::CustomBody,
+            params: &[FacadeParam::ShapeId("wireId")],
+            return_type: ReturnType::Void,
+            occt_class: "",
+            ctor_args: "",
+            setup_code: "BRepLib::BuildCurves3d(get(wireId));",
+            includes: &["BRepLib.hxx"],
+            category: "healing",
+        };
+        let output = emit_kernel(&[&BUILD_CURVES]);
+        assert!(output.contains("[&]() -> void {"));
+        assert!(!output.contains("auto result"));
+        assert_eq!(
+            output
+                .matches("breakScope.throwIfBroke(\"buildCurves3d\");")
+                .count(),
+            3
+        );
+    }
+
+    #[test]
+    fn raw_methods_have_no_break_scope() {
+        static RAW: MethodSpec = MethodSpec {
+            name: "setBreakToken",
+            kind: MethodKind::CustomBodyRaw,
+            params: &[FacadeParam::Int("token")],
+            return_type: ReturnType::Void,
+            occt_class: "",
+            ctor_args: "",
+            setup_code: "breaker_->token.store(token);",
+            includes: &[],
+            category: "kernel",
+        };
+        let output = emit_kernel(&[&RAW]);
+        assert!(!output.contains("BreakScope"));
     }
 
     #[test]

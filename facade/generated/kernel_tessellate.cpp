@@ -98,6 +98,7 @@
 #include <IGESControl_Reader.hxx>
 #include <IGESData_GlobalSection.hxx>
 #include <IGESData_IGESModel.hxx>
+#include <IMeshTools_Parameters.hxx>
 #include <Interface_Static.hxx>
 #include <Law_Linear.hxx>
 #include <Law_S.hxx>
@@ -301,248 +302,305 @@ static EvolutionData buildEvolution(BRepBuilderAPI_MakeShape& maker, uint32_t re
 // === tessellate ===
 
 MeshData OcctKernel::tessellate(uint32_t id, double linearDeflection, double angularDeflection) {
+    BreakScope breakScope(*this);
     try {
-        return buildMeshData(get(id), linearDeflection, angularDeflection, false);
+        auto result = [&]() -> MeshData {
+            return buildMeshData(get(id), linearDeflection, angularDeflection, false);
+        }();
+        breakScope.throwIfBroke("tessellate");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("tessellate");
         throw std::runtime_error(std::string("tessellate: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("tessellate");
+        throw;
     }
 }
 
 MeshData OcctKernel::tessellateRelative(uint32_t id, double linearDeflection, double angularDeflection) {
+    BreakScope breakScope(*this);
     try {
-        return buildMeshData(get(id), linearDeflection, angularDeflection, true);
+        auto result = [&]() -> MeshData {
+            return buildMeshData(get(id), linearDeflection, angularDeflection, true);
+        }();
+        breakScope.throwIfBroke("tessellateRelative");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("tessellateRelative");
         throw std::runtime_error(std::string("tessellateRelative: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("tessellateRelative");
+        throw;
     }
 }
 
 MeshData OcctKernel::meshShape(uint32_t id, double linearDeflection, double angularDeflection) {
+    BreakScope breakScope(*this);
     try {
-        return tessellate(id, linearDeflection, angularDeflection);
+        auto result = [&]() -> MeshData {
+            return tessellate(id, linearDeflection, angularDeflection);
+        }();
+        breakScope.throwIfBroke("meshShape");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("meshShape");
         throw std::runtime_error(std::string("meshShape: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("meshShape");
+        throw;
     }
 }
 
 MeshData OcctKernel::meshShapeForced(uint32_t id, double linearDeflection, double angularDeflection) {
+    BreakScope breakScope(*this);
     try {
-        return buildMeshData(get(id), linearDeflection, angularDeflection, false, true);
+        auto result = [&]() -> MeshData {
+            return buildMeshData(get(id), linearDeflection, angularDeflection, false, true);
+        }();
+        breakScope.throwIfBroke("meshShapeForced");
+        return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("meshShapeForced");
         throw std::runtime_error(std::string("meshShapeForced: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("meshShapeForced");
+        throw;
     }
 }
 
 MeshBatchData OcctKernel::meshBatch(std::vector<uint32_t> ids, double linearDeflection, double angularDeflection) {
+    BreakScope breakScope(*this);
     try {
-        // Cache entry: triangulation handle + metadata from first pass
-        struct FaceCache {
-            Handle(Poly_Triangulation) tri;
-            gp_Trsf trsf;
-            TopoDS_Face face;
-            size_t shapeIdx;
-        };
-        
-        struct ShapeMesh {
-            int posStart, posCount, idxStart, idxCount;
-        };
-        std::vector<ShapeMesh> shapeMeshes;
-        shapeMeshes.reserve(ids.size());
-        std::vector<FaceCache> faceCache;
-        
-        int totalNodes = 0;
-        int totalTris = 0;
-        
-        // First pass: mesh all shapes, cache face data, count totals
-        for (size_t si = 0; si < ids.size(); si++) {
-            const auto& shape = get(ids[si]);
-            BRepMesh_IncrementalMesh mesher(shape, linearDeflection, false, angularDeflection,
-                                            meshInParallel(shape));
-        
-            int shapeNodes = 0;
-            int shapeTris = 0;
-            for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
-                const auto& face = TopoDS::Face(ex.Current());
-                TopLoc_Location loc;
-                auto tri = BRep_Tool::Triangulation(face, loc);
-                if (tri.IsNull())
-                    continue;
-                shapeNodes += tri->NbNodes();
-                shapeTris += tri->NbTriangles();
-                faceCache.push_back({tri, loc.Transformation(), face, si});
-            }
-            shapeMeshes.push_back({totalNodes * 3, shapeNodes * 3, totalTris * 3, shapeTris * 3});
-            totalNodes += shapeNodes;
-            totalTris += shapeTris;
-        }
-        
-        // Allocate
-        MeshBatchData result;
-        result.positionCount = totalNodes * 3;
-        result.normalCount = totalNodes * 3;
-        result.indexCount = totalTris * 3;
-        result.shapeCount = static_cast<int>(ids.size());
-        
-        result.positions = static_cast<float*>(std::malloc(result.positionCount * sizeof(float)));
-        result.normals = static_cast<float*>(std::malloc(result.normalCount * sizeof(float)));
-        result.indices = static_cast<uint32_t*>(std::malloc(result.indexCount * sizeof(uint32_t)));
-        result.shapeOffsets =
-            static_cast<int32_t*>(std::malloc(result.shapeCount * 4 * sizeof(int32_t)));
-        
-        if ((!result.positions && result.positionCount > 0) ||
-            (!result.normals && result.normalCount > 0) ||
-            (!result.indices && result.indexCount > 0) ||
-            (!result.shapeOffsets && result.shapeCount > 0)) {
-            throw std::runtime_error("meshBatch: memory allocation failed");
-        }
-        
-        // Second pass: extract geometry from cached face data
-        int vertexOffset = 0;
-        int triOffset = 0;
-        
-        for (const auto& fc : faceCache) {
-            const auto& tri = fc.tri;
-            const auto& trsf = fc.trsf;
-            bool identityTrsf = (trsf.Form() == gp_Identity);
-            int nbNodes = tri->NbNodes();
-            int nbTri = tri->NbTriangles();
-        
-            if (identityTrsf) {
-                for (int i = 1; i <= nbNodes; i++) {
-                    const gp_Pnt& p = tri->Node(i);
-                    int base = (vertexOffset + i - 1) * 3;
-                    result.positions[base + 0] = static_cast<float>(p.X());
-                    result.positions[base + 1] = static_cast<float>(p.Y());
-                    result.positions[base + 2] = static_cast<float>(p.Z());
+        auto result = [&]() -> MeshBatchData {
+            // Cache entry: triangulation handle + metadata from first pass
+            struct FaceCache {
+                Handle(Poly_Triangulation) tri;
+                gp_Trsf trsf;
+                TopoDS_Face face;
+                size_t shapeIdx;
+            };
+            
+            struct ShapeMesh {
+                int posStart, posCount, idxStart, idxCount;
+            };
+            std::vector<ShapeMesh> shapeMeshes;
+            shapeMeshes.reserve(ids.size());
+            std::vector<FaceCache> faceCache;
+            
+            int totalNodes = 0;
+            int totalTris = 0;
+            
+            // First pass: mesh all shapes, cache face data, count totals
+            for (size_t si = 0; si < ids.size(); si++) {
+                const auto& shape = get(ids[si]);
+                IMeshTools_Parameters meshParams;
+                meshParams.Deflection = linearDeflection;
+                meshParams.Angle = angularDeflection;
+                meshParams.InParallel = meshInParallel(shape);
+                BRepMesh_IncrementalMesh mesher(shape, meshParams, breakRange());
+            
+                int shapeNodes = 0;
+                int shapeTris = 0;
+                for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+                    const auto& face = TopoDS::Face(ex.Current());
+                    TopLoc_Location loc;
+                    auto tri = BRep_Tool::Triangulation(face, loc);
+                    if (tri.IsNull())
+                        continue;
+                    shapeNodes += tri->NbNodes();
+                    shapeTris += tri->NbTriangles();
+                    faceCache.push_back({tri, loc.Transformation(), face, si});
                 }
-            } else {
-                for (int i = 1; i <= nbNodes; i++) {
-                    gp_Pnt p = tri->Node(i).Transformed(trsf);
-                    int base = (vertexOffset + i - 1) * 3;
-                    result.positions[base + 0] = static_cast<float>(p.X());
-                    result.positions[base + 1] = static_cast<float>(p.Y());
-                    result.positions[base + 2] = static_cast<float>(p.Z());
-                }
+                shapeMeshes.push_back({totalNodes * 3, shapeNodes * 3, totalTris * 3, shapeTris * 3});
+                totalNodes += shapeNodes;
+                totalTris += shapeTris;
             }
-        
-            // Triangulation normals are surface normals: ComputeNormals ignores the
-            // face orientation, and the Poly_Triangulation is shared by every face
-            // using this surface, so the flip must happen here, not in the cache.
-            bool isReversed = (fc.face.Orientation() == TopAbs_REVERSED);
-            if (!tri->HasNormals()) {
-                BRepLib_ToolTriangulatedShape::ComputeNormals(fc.face, tri);
+            
+            // Allocate
+            MeshBatchData result;
+            result.positionCount = totalNodes * 3;
+            result.normalCount = totalNodes * 3;
+            result.indexCount = totalTris * 3;
+            result.shapeCount = static_cast<int>(ids.size());
+            
+            result.positions = static_cast<float*>(std::malloc(result.positionCount * sizeof(float)));
+            result.normals = static_cast<float*>(std::malloc(result.normalCount * sizeof(float)));
+            result.indices = static_cast<uint32_t*>(std::malloc(result.indexCount * sizeof(uint32_t)));
+            result.shapeOffsets =
+                static_cast<int32_t*>(std::malloc(result.shapeCount * 4 * sizeof(int32_t)));
+            
+            if ((!result.positions && result.positionCount > 0) ||
+                (!result.normals && result.normalCount > 0) ||
+                (!result.indices && result.indexCount > 0) ||
+                (!result.shapeOffsets && result.shapeCount > 0)) {
+                throw std::runtime_error("meshBatch: memory allocation failed");
             }
-            bool hasNormals = tri->HasNormals();
-            for (int i = 1; i <= nbNodes; i++) {
-                gp_Dir d(0, 0, 1);
-                if (hasNormals) {
-                    NCollection_Vec3<float> nv;
-                    tri->Normal(i, nv);
-                    if (nv.x() != 0.0f || nv.y() != 0.0f || nv.z() != 0.0f) {
-                        d = gp_Dir(nv.x(), nv.y(), nv.z());
+            
+            // Second pass: extract geometry from cached face data
+            int vertexOffset = 0;
+            int triOffset = 0;
+            
+            for (const auto& fc : faceCache) {
+                const auto& tri = fc.tri;
+                const auto& trsf = fc.trsf;
+                bool identityTrsf = (trsf.Form() == gp_Identity);
+                int nbNodes = tri->NbNodes();
+                int nbTri = tri->NbTriangles();
+            
+                if (identityTrsf) {
+                    for (int i = 1; i <= nbNodes; i++) {
+                        const gp_Pnt& p = tri->Node(i);
+                        int base = (vertexOffset + i - 1) * 3;
+                        result.positions[base + 0] = static_cast<float>(p.X());
+                        result.positions[base + 1] = static_cast<float>(p.Y());
+                        result.positions[base + 2] = static_cast<float>(p.Z());
+                    }
+                } else {
+                    for (int i = 1; i <= nbNodes; i++) {
+                        gp_Pnt p = tri->Node(i).Transformed(trsf);
+                        int base = (vertexOffset + i - 1) * 3;
+                        result.positions[base + 0] = static_cast<float>(p.X());
+                        result.positions[base + 1] = static_cast<float>(p.Y());
+                        result.positions[base + 2] = static_cast<float>(p.Z());
                     }
                 }
-                if (isReversed) {
-                    d.Reverse();
+            
+                // Triangulation normals are surface normals: ComputeNormals ignores the
+                // face orientation, and the Poly_Triangulation is shared by every face
+                // using this surface, so the flip must happen here, not in the cache.
+                bool isReversed = (fc.face.Orientation() == TopAbs_REVERSED);
+                if (!tri->HasNormals()) {
+                    BRepLib_ToolTriangulatedShape::ComputeNormals(fc.face, tri);
                 }
-                if (!identityTrsf) {
-                    d = d.Transformed(trsf);
+                bool hasNormals = tri->HasNormals();
+                for (int i = 1; i <= nbNodes; i++) {
+                    gp_Dir d(0, 0, 1);
+                    if (hasNormals) {
+                        NCollection_Vec3<float> nv;
+                        tri->Normal(i, nv);
+                        if (nv.x() != 0.0f || nv.y() != 0.0f || nv.z() != 0.0f) {
+                            d = gp_Dir(nv.x(), nv.y(), nv.z());
+                        }
+                    }
+                    if (isReversed) {
+                        d.Reverse();
+                    }
+                    if (!identityTrsf) {
+                        d = d.Transformed(trsf);
+                    }
+                    int base = (vertexOffset + i - 1) * 3;
+                    result.normals[base + 0] = static_cast<float>(d.X());
+                    result.normals[base + 1] = static_cast<float>(d.Y());
+                    result.normals[base + 2] = static_cast<float>(d.Z());
                 }
-                int base = (vertexOffset + i - 1) * 3;
-                result.normals[base + 0] = static_cast<float>(d.X());
-                result.normals[base + 1] = static_cast<float>(d.Y());
-                result.normals[base + 2] = static_cast<float>(d.Z());
+            
+                for (int t = 1; t <= nbTri; t++) {
+                    const auto& triangle = tri->Triangle(t);
+                    int n1 = triangle.Value(1);
+                    int n2 = triangle.Value(2);
+                    int n3 = triangle.Value(3);
+                    if (isReversed)
+                        std::swap(n1, n2);
+                    result.indices[triOffset + 0] = static_cast<uint32_t>(n1 - 1 + vertexOffset);
+                    result.indices[triOffset + 1] = static_cast<uint32_t>(n2 - 1 + vertexOffset);
+                    result.indices[triOffset + 2] = static_cast<uint32_t>(n3 - 1 + vertexOffset);
+                    triOffset += 3;
+                }
+            
+                vertexOffset += nbNodes;
             }
-        
-            for (int t = 1; t <= nbTri; t++) {
-                const auto& triangle = tri->Triangle(t);
-                int n1 = triangle.Value(1);
-                int n2 = triangle.Value(2);
-                int n3 = triangle.Value(3);
-                if (isReversed)
-                    std::swap(n1, n2);
-                result.indices[triOffset + 0] = static_cast<uint32_t>(n1 - 1 + vertexOffset);
-                result.indices[triOffset + 1] = static_cast<uint32_t>(n2 - 1 + vertexOffset);
-                result.indices[triOffset + 2] = static_cast<uint32_t>(n3 - 1 + vertexOffset);
-                triOffset += 3;
+            
+            // Write per-shape offsets
+            for (size_t si = 0; si < ids.size(); si++) {
+                int oi = static_cast<int>(si) * 4;
+                result.shapeOffsets[oi + 0] = shapeMeshes[si].posStart;
+                result.shapeOffsets[oi + 1] = shapeMeshes[si].posCount;
+                result.shapeOffsets[oi + 2] = shapeMeshes[si].idxStart;
+                result.shapeOffsets[oi + 3] = shapeMeshes[si].idxCount;
             }
-        
-            vertexOffset += nbNodes;
-        }
-        
-        // Write per-shape offsets
-        for (size_t si = 0; si < ids.size(); si++) {
-            int oi = static_cast<int>(si) * 4;
-            result.shapeOffsets[oi + 0] = shapeMeshes[si].posStart;
-            result.shapeOffsets[oi + 1] = shapeMeshes[si].posCount;
-            result.shapeOffsets[oi + 2] = shapeMeshes[si].idxStart;
-            result.shapeOffsets[oi + 3] = shapeMeshes[si].idxCount;
-        }
-        
+            
+            return result;
+        }();
+        breakScope.throwIfBroke("meshBatch");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("meshBatch");
         throw std::runtime_error(std::string("meshBatch: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("meshBatch");
+        throw;
     }
 }
 
 EdgeData OcctKernel::wireframe(uint32_t id, double deflection) {
+    BreakScope breakScope(*this);
     try {
-        const auto& shape = get(id);
-        
-        struct EdgeSample {
-            std::vector<gp_Pnt> pts;
-            int hash;
-        };
-        std::vector<EdgeSample> edgeSamples;
-        int totalPoints = 0;
-        
-        // Use IndexedMap to avoid duplicate edges (shared between faces)
-        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edgeMap;
-        TopExp::MapShapes(shape, TopAbs_EDGE, edgeMap);
-        for (int ei = 1; ei <= edgeMap.Extent(); ei++) {
-            BRepAdaptor_Curve curve(TopoDS::Edge(edgeMap.FindKey(ei)));
-            // GCPnts_TangentialDeflection takes (curve, angular, curvature): the
-            // caller's deflection is the chord error, capped at 0.5 rad per step.
-            GCPnts_TangentialDeflection sampler(curve, 0.5, deflection);
-            EdgeSample es;
-            for (int i = 1; i <= sampler.NbPoints(); i++) {
-                es.pts.push_back(sampler.Value(i));
+        auto result = [&]() -> EdgeData {
+            const auto& shape = get(id);
+            
+            struct EdgeSample {
+                std::vector<gp_Pnt> pts;
+                int hash;
+            };
+            std::vector<EdgeSample> edgeSamples;
+            int totalPoints = 0;
+            
+            // Use IndexedMap to avoid duplicate edges (shared between faces)
+            NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edgeMap;
+            TopExp::MapShapes(shape, TopAbs_EDGE, edgeMap);
+            for (int ei = 1; ei <= edgeMap.Extent(); ei++) {
+                BRepAdaptor_Curve curve(TopoDS::Edge(edgeMap.FindKey(ei)));
+                // GCPnts_TangentialDeflection takes (curve, angular, curvature): the
+                // caller's deflection is the chord error, capped at 0.5 rad per step.
+                GCPnts_TangentialDeflection sampler(curve, 0.5, deflection);
+                EdgeSample es;
+                for (int i = 1; i <= sampler.NbPoints(); i++) {
+                    es.pts.push_back(sampler.Value(i));
+                }
+                es.hash = static_cast<int>(TopTools_ShapeMapHasher{}(edgeMap.FindKey(ei)) % 2147483647);
+                totalPoints += static_cast<int>(es.pts.size());
+                edgeSamples.push_back(std::move(es));
             }
-            es.hash = static_cast<int>(TopTools_ShapeMapHasher{}(edgeMap.FindKey(ei)) % 2147483647);
-            totalPoints += static_cast<int>(es.pts.size());
-            edgeSamples.push_back(std::move(es));
-        }
-        
-        EdgeData result;
-        result.pointCount = totalPoints * 3;
-        result.points = static_cast<float*>(std::malloc(result.pointCount * sizeof(float)));
-        int numEdges = static_cast<int>(edgeSamples.size());
-        result.edgeGroupCount = numEdges * 3;
-        result.edgeGroups =
-            static_cast<int32_t*>(std::malloc(result.edgeGroupCount * sizeof(int32_t)));
-        if (!result.points && result.pointCount > 0) {
-            throw std::runtime_error("wireframe: allocation failed");
-        }
-        
-        int offset = 0;
-        int edgeIdx = 0;
-        for (const auto& es : edgeSamples) {
-            int edgeStart = offset;
-            for (const auto& p : es.pts) {
-                result.points[offset + 0] = static_cast<float>(p.X());
-                result.points[offset + 1] = static_cast<float>(p.Y());
-                result.points[offset + 2] = static_cast<float>(p.Z());
-                offset += 3;
+            
+            EdgeData result;
+            result.pointCount = totalPoints * 3;
+            result.points = static_cast<float*>(std::malloc(result.pointCount * sizeof(float)));
+            int numEdges = static_cast<int>(edgeSamples.size());
+            result.edgeGroupCount = numEdges * 3;
+            result.edgeGroups =
+                static_cast<int32_t*>(std::malloc(result.edgeGroupCount * sizeof(int32_t)));
+            if (!result.points && result.pointCount > 0) {
+                throw std::runtime_error("wireframe: allocation failed");
             }
-            if (result.edgeGroups) {
-                result.edgeGroups[edgeIdx * 3] = edgeStart;
-                result.edgeGroups[edgeIdx * 3 + 1] = offset - edgeStart;
-                result.edgeGroups[edgeIdx * 3 + 2] = es.hash;
+            
+            int offset = 0;
+            int edgeIdx = 0;
+            for (const auto& es : edgeSamples) {
+                int edgeStart = offset;
+                for (const auto& p : es.pts) {
+                    result.points[offset + 0] = static_cast<float>(p.X());
+                    result.points[offset + 1] = static_cast<float>(p.Y());
+                    result.points[offset + 2] = static_cast<float>(p.Z());
+                    offset += 3;
+                }
+                if (result.edgeGroups) {
+                    result.edgeGroups[edgeIdx * 3] = edgeStart;
+                    result.edgeGroups[edgeIdx * 3 + 1] = offset - edgeStart;
+                    result.edgeGroups[edgeIdx * 3 + 2] = es.hash;
+                }
+                edgeIdx++;
             }
-            edgeIdx++;
-        }
-        
+            
+            return result;
+        }();
+        breakScope.throwIfBroke("wireframe");
         return result;
     } catch (const Standard_Failure& e) {
+        breakScope.throwIfBroke("wireframe");
         throw std::runtime_error(std::string("wireframe: ") + e.what());
+    } catch (const std::runtime_error&) {
+        breakScope.throwIfBroke("wireframe");
+        throw;
     }
 }

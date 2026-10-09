@@ -580,6 +580,12 @@ export enum OcctErrorCode {
     HealingFailed = "HEALING_FAILED",
     /** Operation attempted on a closed XCAF document. */
     DocumentClosed = "DOCUMENT_CLOSED",
+    /**
+     * A user break stopped the operation: the interrupt flag held the token of
+     * {@link OcctKernel.setBreakToken}. The inputs and the arena are as before
+     * the call. See {@link OcctKernel.interruptFlag}.
+     */
+    Interrupted = "INTERRUPTED",
     /** OCCT kernel raised an internal error (Standard_Failure). */
     KernelError = "KERNEL_ERROR",
     /** Error does not match any known pattern. */
@@ -640,6 +646,9 @@ const HEALING_OPS = new Set(["fixShape", "unifySameDomain", "healSolid", "healFa
  */
 function classifyError(operation: string, message: string): OcctErrorCode {
     const msg = message.toLowerCase();
+
+    // A stopped call throws "<operation>: interrupted" in place of each other failure.
+    if (/(^|: )interrupted$/.test(msg)) return OcctErrorCode.Interrupted;
 
     // Exact pattern matches from C++ facade
     if (msg.includes("invalid shape id")) return OcctErrorCode.InvalidShapeId;

@@ -284,7 +284,7 @@ fuser.SetArguments(args);
 fuser.SetTools(tools);
 fuser.SetNonDestructive(Standard_True);
 fuser.SetRunParallel(true);
-fuser.Build();
+fuser.Build(breakRange());
 if (!fuser.IsDone() || fuser.HasErrors()) {
     throw std::runtime_error(\"fuseAll: operation failed\");
 }
@@ -318,7 +318,7 @@ for (uint32_t sid : shapeIds) {
 }
 BOPAlgo_CellsBuilder builder;
 builder.SetArguments(args);
-builder.Perform();
+builder.Perform(breakRange());
 if (builder.HasErrors()) {
     throw std::runtime_error(\"intersectionCells: build failed\");
 }
@@ -363,7 +363,7 @@ cutter.SetArguments(args);
 cutter.SetTools(tools);
 cutter.SetNonDestructive(Standard_True);
 cutter.SetRunParallel(true);
-cutter.Build();
+cutter.Build(breakRange());
 if (!cutter.IsDone() || cutter.HasErrors()) {
     throw std::runtime_error(\"cutAll: operation failed\");
 }
@@ -394,15 +394,14 @@ TopoDS_Shape current = get(baseId);
 for (size_t i = 0; i < opCodes.size(); i++) {
     const auto& tool = get(toolIds[i]);
     bool isLast = (i == opCodes.size() - 1);
-    Message_ProgressRange progress;
     NCollection_List<TopoDS_Shape> arguments;
     arguments.Append(current);
     NCollection_List<TopoDS_Shape> tools;
     tools.Append(tool);
     switch (opCodes[i]) {
-    case 0: { BRepAlgoAPI_Fuse op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: fuse step failed\"); current = op.Shape(); break; }
-    case 1: { BRepAlgoAPI_Cut op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: cut step failed\"); current = op.Shape(); break; }
-    case 2: { BRepAlgoAPI_Common op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(progress); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: intersect step failed\"); current = op.Shape(); break; }
+    case 0: { BRepAlgoAPI_Fuse op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(breakRange()); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: fuse step failed\"); current = op.Shape(); break; }
+    case 1: { BRepAlgoAPI_Cut op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(breakRange()); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: cut step failed\"); current = op.Shape(); break; }
+    case 2: { BRepAlgoAPI_Common op; op.SetArguments(arguments); op.SetTools(tools); op.SetNonDestructive(Standard_True); op.Build(breakRange()); if (!op.IsDone() || op.HasErrors()) throw std::runtime_error(\"booleanPipeline: intersect step failed\"); current = op.Shape(); break; }
     default: throw std::runtime_error(\"booleanPipeline: unknown opCode\");
     }
     if (isLast) {
@@ -414,7 +413,7 @@ for (size_t i = 0; i < opCodes.size(); i++) {
 return store(current);",
         includes: &[
             "BRepAlgoAPI_Fuse.hxx", "BRepAlgoAPI_Cut.hxx", "BRepAlgoAPI_Common.hxx",
-            "ShapeUpgrade_UnifySameDomain.hxx", "Message_ProgressRange.hxx",
+            "ShapeUpgrade_UnifySameDomain.hxx",
         ],
         category: "booleans",
         return_type: ReturnType::ShapeId,
@@ -435,7 +434,7 @@ for (uint32_t tid : toolIds) {
 BRepAlgoAPI_Splitter splitter;
 splitter.SetArguments(args);
 splitter.SetTools(tools);
-splitter.Build();
+splitter.Build(breakRange());
 if (!splitter.IsDone() || splitter.HasErrors()) {
     throw std::runtime_error(\"split: operation failed\");
 }
@@ -554,7 +553,7 @@ for (uint32_t eid : edgeIds) {
     }
     maker.AddDA(distance, angleRad, edge, adjFace);
 }
-maker.Build();
+maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"chamferDistAngle: operation failed\");
 }
@@ -603,7 +602,7 @@ if (referenceFaceId != 0) {
     }
 }
 maker.Add(distance1, distance2, edge, refFace);
-maker.Build();
+maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"chamferAsymmetric: operation failed\");
 }
@@ -648,7 +647,7 @@ for (size_t i = 0; i < edgeIds.size(); i++) {
         maker.Add(distance, second, edge, face);
     }
 }
-maker.Build();
+maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"chamferOnFaces: operation failed\");
 }
@@ -683,7 +682,8 @@ for (uint32_t fid : faceIds) {
     facesToRemove.Append(get(fid));
 }
 BRepOffsetAPI_MakeThickSolid maker;
-maker.MakeThickSolidByJoin(get(solidId), facesToRemove, -thickness, tolerance);
+maker.MakeThickSolidByJoin(get(solidId), facesToRemove, -thickness, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, false,
+                           breakRange());
 maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"shell: operation failed\");
@@ -706,7 +706,8 @@ return store(maker.Shape());",
         ctor_args: "",
         setup_code: "\
 BRepOffsetAPI_MakeOffsetShape maker;
-maker.PerformByJoin(get(solidId), distance, tolerance);
+maker.PerformByJoin(get(solidId), distance, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, false,
+                    breakRange());
 maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"offset: operation failed\");
@@ -755,7 +756,7 @@ const auto& shape = get(shapeId);
 if (shape.ShapeType() == TopAbs_FACE || shape.ShapeType() == TopAbs_SHELL) {
     BRepOffset_MakeOffset offsetMaker;
     offsetMaker.Initialize(shape, thickness, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, true);
-    offsetMaker.MakeOffsetShape();
+    offsetMaker.MakeOffsetShape(breakRange());
     if (!offsetMaker.IsDone()) {
         throw std::runtime_error(\"thicken: offset operation failed\");
     }
@@ -763,7 +764,8 @@ if (shape.ShapeType() == TopAbs_FACE || shape.ShapeType() == TopAbs_SHELL) {
 }
 NCollection_List<TopoDS_Shape> emptyList;
 BRepOffsetAPI_MakeThickSolid maker;
-maker.MakeThickSolidByJoin(shape, emptyList, thickness, tolerance);
+maker.MakeThickSolidByJoin(shape, emptyList, thickness, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, false,
+                           breakRange());
 maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"thicken: operation failed\");
@@ -797,7 +799,7 @@ maker.AddFacesToRemove(facesToRemove);
 if (tolerance > 0.0) {
     maker.SetFuzzyValue(tolerance);
 }
-maker.Build();
+maker.Build(breakRange());
 if (!maker.IsDone() || maker.HasErrors()) {
     throw std::runtime_error(\"defeature: operation failed\");
 }
@@ -841,7 +843,7 @@ return store(maker.Shape());",
         setup_code: "\
 BRepFilletAPI_MakeFillet maker(TopoDS::Solid(get(solidId)));
 maker.Add(startRadius, endRadius, TopoDS::Edge(get(edgeId)));
-maker.Build();
+maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"filletVariable: operation failed\");
 }
@@ -942,7 +944,7 @@ for (size_t i = 0; i < edgeIds.size(); i++) {
         maker.SetRadius(uandr, ic, j);
     }
 }
-maker.Build();
+maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"filletLaw: operation failed\");
 }
@@ -987,7 +989,7 @@ try {
         for (int j = 0; j < edgeCounts[i]; j++) {
             maker.Add(radii[i], TopoDS::Edge(get(flatEdgeIds[edgeOffset + j])));
         }
-        maker.Build();
+        maker.Build(breakRange());
         if (!maker.IsDone()) throw std::runtime_error(\"filletBatch: fillet failed on solid \" + std::to_string(i));
         results.push_back(store(validateFilletResult(unwrapSingletonSolid(maker.Shape()), \"filletBatch\", true)));
         edgeOffset += static_cast<size_t>(edgeCounts[i]);
@@ -4449,7 +4451,7 @@ if (status != IFSelect_RetDone) {
     throw std::runtime_error(\"importStep: failed to read STEP data\");
 }
 
-reader.TransferRoots();
+reader.TransferRoots(breakRange());
 if (reader.NbShapes() == 0) {
     throw std::runtime_error(\"importStep: no shapes found in STEP data\");
 }
@@ -4565,7 +4567,10 @@ return result;",
 const auto& shape = get(id);
 
 // Mesh the shape first
-BRepMesh_IncrementalMesh mesher(shape, linearDeflection, false, 0.5, meshInParallel(shape));
+IMeshTools_Parameters meshParams;
+meshParams.Deflection = linearDeflection;
+meshParams.InParallel = meshInParallel(shape);
+BRepMesh_IncrementalMesh mesher(shape, meshParams, breakRange());
 
 StlAPI_Writer writer;
 writer.ASCIIMode() = ascii;
@@ -4587,7 +4592,8 @@ fread(&result[0], 1, size, f);
 fclose(f);
 
 return result;",
-        includes: &["BRepMesh_IncrementalMesh.hxx", "StlAPI_Writer.hxx"],
+        includes: &[
+            "IMeshTools_Parameters.hxx","BRepMesh_IncrementalMesh.hxx", "StlAPI_Writer.hxx"],
         category: "io",
         return_type: ReturnType::String,
     },
@@ -4660,7 +4666,7 @@ std::optional<MeshSnapshot> snapshot;
 if (force) {
     snapshot.emplace(shape);
 }
-meshShapeAt(shape, linearDeflection, angularDeflection, false, force);
+meshShapeAt(shape, linearDeflection, angularDeflection, false, force, breakRange());
 
 StlAPI_Writer writer;
 writer.ASCIIMode() = ascii;
@@ -4823,7 +4829,7 @@ op.SetArguments(arguments);
 op.SetTools(tools);
 op.SetNonDestructive(Standard_True);
 op.SetRunParallel(Standard_True);
-op.Build();
+op.Build(breakRange());
 if (!op.IsDone() || op.HasErrors()) {
     throw std::runtime_error(\"fuseWithHistory: operation failed\");
 }
@@ -4863,7 +4869,7 @@ op.SetArguments(arguments);
 op.SetTools(tools);
 op.SetNonDestructive(Standard_True);
 op.SetRunParallel(Standard_True);
-op.Build();
+op.Build(breakRange());
 if (!op.IsDone() || op.HasErrors()) {
     throw std::runtime_error(\"cutWithHistory: operation failed\");
 }
@@ -4895,7 +4901,7 @@ BRepFilletAPI_MakeFillet maker(solid);
 for (uint32_t eid : edgeIds) {
     maker.Add(radius, TopoDS::Edge(get(eid)));
 }
-maker.Build();
+maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"filletWithHistory: operation failed\");
 }
@@ -4993,7 +4999,7 @@ op.SetArguments(arguments);
 op.SetTools(tools);
 op.SetNonDestructive(Standard_True);
 op.SetRunParallel(Standard_True);
-op.Build();
+op.Build(breakRange());
 if (!op.IsDone() || op.HasErrors()) {
     throw std::runtime_error(\"intersectWithHistory: operation failed\");
 }
@@ -5024,7 +5030,7 @@ BRepFilletAPI_MakeChamfer maker(solid);
 for (uint32_t eid : edgeIds) {
     maker.Add(distance, TopoDS::Edge(get(eid)));
 }
-maker.Build();
+maker.Build(breakRange());
 if (!maker.IsDone()) {
     throw std::runtime_error(\"chamferWithHistory: operation failed\");
 }
@@ -5053,7 +5059,8 @@ for (uint32_t fid : faceIds) {
     facesToRemove.Append(get(fid));
 }
 BRepOffsetAPI_MakeThickSolid maker;
-maker.MakeThickSolidByJoin(solid, facesToRemove, -thickness, tolerance);
+maker.MakeThickSolidByJoin(solid, facesToRemove, -thickness, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, false,
+                           breakRange());
 maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"shellWithHistory: operation failed\");
@@ -5077,7 +5084,8 @@ return buildEvolution(maker, resultId, solid, inputFaceHashes, hashUpperBound);"
         setup_code: "\
 const auto& solid = get(solidId);
 BRepOffsetAPI_MakeOffsetShape maker;
-maker.PerformByJoin(solid, distance, tolerance);
+maker.PerformByJoin(solid, distance, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, false,
+                    breakRange());
 maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"offsetWithHistory: operation failed\");
@@ -5107,7 +5115,7 @@ if (shape.ShapeType() == TopAbs_FACE || shape.ShapeType() == TopAbs_SHELL) {
     BRepOffset_MakeOffset offsetMaker;
     offsetMaker.Initialize(shape, thickness, tolerance, BRepOffset_Skin, false, false,
                            GeomAbs_Arc, true);
-    offsetMaker.MakeOffsetShape();
+    offsetMaker.MakeOffsetShape(breakRange());
     if (!offsetMaker.IsDone()) {
         throw std::runtime_error(\"thickenWithHistory: offset operation failed\");
     }
@@ -5120,7 +5128,8 @@ if (shape.ShapeType() == TopAbs_FACE || shape.ShapeType() == TopAbs_SHELL) {
 
 NCollection_List<TopoDS_Shape> emptyList;
 BRepOffsetAPI_MakeThickSolid maker;
-maker.MakeThickSolidByJoin(shape, emptyList, thickness, tolerance);
+maker.MakeThickSolidByJoin(shape, emptyList, thickness, tolerance, BRepOffset_Skin, false, false, GeomAbs_Arc, false,
+                           breakRange());
 maker.Build();
 if (!maker.IsDone()) {
     throw std::runtime_error(\"thickenWithHistory: operation failed\");
@@ -5236,8 +5245,11 @@ int totalTris = 0;
 // First pass: mesh all shapes, cache face data, count totals
 for (size_t si = 0; si < ids.size(); si++) {
     const auto& shape = get(ids[si]);
-    BRepMesh_IncrementalMesh mesher(shape, linearDeflection, false, angularDeflection,
-                                    meshInParallel(shape));
+    IMeshTools_Parameters meshParams;
+    meshParams.Deflection = linearDeflection;
+    meshParams.Angle = angularDeflection;
+    meshParams.InParallel = meshInParallel(shape);
+    BRepMesh_IncrementalMesh mesher(shape, meshParams, breakRange());
 
     int shapeNodes = 0;
     int shapeTris = 0;
@@ -5361,6 +5373,7 @@ for (size_t si = 0; si < ids.size(); si++) {
 
 return result;",
         includes: &[
+            "IMeshTools_Parameters.hxx",
             "BRepLib_ToolTriangulatedShape.hxx", "BRepMesh_IncrementalMesh.hxx",
             "BRep_Tool.hxx", "NCollection_Vec3.hxx", "Poly_Triangulation.hxx",
             "TopAbs_Orientation.hxx", "TopExp_Explorer.hxx", "TopLoc_Location.hxx",
@@ -5519,7 +5532,9 @@ return result;",
 // each face: mesh a copy of the topology, so the mesh of the shape stays.
 BRepBuilderAPI_Copy copier(get(shapeId), false, false);
 TopoDS_Shape shape = copier.Shape();
-BRepMesh_IncrementalMesh mesher(shape, deflection, false, 0.5);
+IMeshTools_Parameters meshParams;
+meshParams.Deflection = deflection;
+BRepMesh_IncrementalMesh mesher(shape, meshParams, breakRange());
 
 Handle(HLRBRep_PolyAlgo) hlr = new HLRBRep_PolyAlgo();
 hlr->Load(shape);
@@ -5553,6 +5568,7 @@ result.hiddenSharp = storeIfNotNull(hlrShapes.HCompound());
 
 return result;",
         includes: &[
+            "IMeshTools_Parameters.hxx",
             "BRepBuilderAPI_Copy.hxx", "BRepLib.hxx", "BRepMesh_IncrementalMesh.hxx",
             "HLRAlgo_Projector.hxx", "HLRBRep_PolyAlgo.hxx", "HLRBRep_PolyHLRToShape.hxx",
             "gp_Ax2.hxx", "gp_Dir.hxx", "gp_Pnt.hxx",
@@ -5632,6 +5648,32 @@ for (auto it = arena_.begin(); it != arena_.end();) {
         includes: &[],
         category: "kernel",
         return_type: ReturnType::Uint32,
+    },
+    // ── A stop from another thread (NekoCAD) ────────────────────────
+    // The client writes the token of a call into the interrupt flag while the
+    // call runs, and each algorithm that has a breakRange() then stops. These
+    // two touch only atomics, thus they have no Standard_Failure catch.
+    MethodSpec {
+        name: "setBreakToken",
+        kind: MethodKind::CustomBodyRaw,
+        params: &[FacadeParam::Int("token")],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "breaker_->token.store(token, std::memory_order_relaxed);",
+        includes: &[],
+        category: "kernel",
+        return_type: ReturnType::Void,
+    },
+    MethodSpec {
+        name: "interruptFlagAddress",
+        kind: MethodKind::CustomBodyRaw,
+        params: &[],
+        occt_class: "",
+        ctor_args: "",
+        setup_code: "return static_cast<double>(reinterpret_cast<uintptr_t>(&breaker_->flag));",
+        includes: &[],
+        category: "kernel",
+        return_type: ReturnType::Double,
     },
     // ── The history of a step (NekoCAD) ─────────────────────────────
     // Each maker that changes faces records its history between historyBegin and historyEnd.
@@ -6289,7 +6331,7 @@ if (reader.ReadFile(tmpPath.c_str()) != IFSelect_RetDone) {
 }
 std::remove(tmpPath.c_str());
 
-if (!reader.Transfer(doc)) {
+if (!reader.Transfer(doc, breakRange())) {
     getXCAFApp()->Close(doc);
     throw std::runtime_error(\"xcafImportSTEP: transfer failed\");
 }
@@ -6371,8 +6413,11 @@ shapeTool->GetFreeShapes(labels);
 for (int i = 1; i <= labels.Length(); ++i) {
     TopoDS_Shape shape;
     if (shapeTool->GetShape(labels.Value(i), shape)) {
-        BRepMesh_IncrementalMesh mesh(shape, linDeflection, Standard_False, angDeflection,
-                                      Standard_True);
+        IMeshTools_Parameters meshParams;
+        meshParams.Deflection = linDeflection;
+        meshParams.Angle = angDeflection;
+        meshParams.InParallel = Standard_True;
+        BRepMesh_IncrementalMesh mesh(shape, meshParams, breakRange());
     }
 }
 
@@ -6394,6 +6439,7 @@ if (!writer->Perform(it->second.doc, fileInfo, Message_ProgressRange())) {
 // Return file path — JS reads binary via Module.FS.readFile()
 return tmpPath;",
         includes: &[
+            "IMeshTools_Parameters.hxx",
             "XCAFDoc_ShapeTool.hxx", "XCAFDoc_DocumentTool.hxx",
             "TDF_Label.hxx", "NCollection_Sequence.hxx",
             "BRepMesh_IncrementalMesh.hxx", "RWGltf_CafWriter.hxx",
@@ -6530,6 +6576,54 @@ pub fn target_methods() -> &'static [MethodSpec] {
     TARGET_METHODS
 }
 
+/// The OCCT algorithms that ask `UserBreak` (or that the fork of OCCT makes ask
+/// it). A spec that makes one gives it `breakRange()`, so a user break stops it.
+pub const BREAKABLE_CLASSES: &[&str] = &[
+    "BOPAlgo_CellsBuilder",
+    "BRepAlgoAPI_Common",
+    "BRepAlgoAPI_Cut",
+    "BRepAlgoAPI_Defeaturing",
+    "BRepAlgoAPI_Fuse",
+    "BRepAlgoAPI_Section",
+    "BRepAlgoAPI_Splitter",
+    "BRepFilletAPI_MakeChamfer",
+    "BRepFilletAPI_MakeFillet",
+    "BRepMesh_IncrementalMesh",
+    "BRepOffsetAPI_MakeOffsetShape",
+    "BRepOffsetAPI_MakeThickSolid",
+    "BRepOffset_MakeOffset",
+    "STEPCAFControl_Reader",
+    "STEPControl_Reader",
+];
+
+/// How many objects of the breakable classes `code` declares: a class name, then
+/// a variable name, then `;`, `(`, or `{`. A comment that names a class does not count.
+fn breakable_declarations(code: &str) -> usize {
+    let is_ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut count = 0;
+    for class in BREAKABLE_CLASSES {
+        for (at, _) in code.match_indices(class) {
+            let before = code[..at].chars().next_back();
+            let after = &code[at + class.len()..];
+            if before.is_some_and(is_ident) || after.starts_with(is_ident) {
+                continue;
+            }
+            let rest = after.trim_start();
+            if rest.len() == after.len() {
+                continue;
+            }
+            let name_len = rest.find(|c: char| !is_ident(c)).unwrap_or(rest.len());
+            if name_len == 0 {
+                continue;
+            }
+            if rest[name_len..].trim_start().starts_with([';', '(', '{']) {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
 /// Validate the method specs before emission, returning a descriptive error
 /// instead of panicking. Run as a fail-fast pass at the start of codegen so a
 /// malformed hand-edited spec is rejected up front rather than producing broken
@@ -6565,6 +6659,27 @@ pub fn validate(methods: &[MethodSpec]) -> Result<()> {
             | MethodKind::SetupShape => {
                 if m.occt_class.is_empty() {
                     bail!("generable method '{}' is missing occt_class", m.name);
+                }
+            }
+        }
+        // Each breakable algorithm gets a break range, so a user break stops it.
+        match m.kind {
+            MethodKind::BooleanOp | MethodKind::FilletLike => {}
+            _ if BREAKABLE_CLASSES.contains(&m.occt_class) => {
+                bail!(
+                    "method '{}' makes {} with no breakRange(): use a BooleanOp, a FilletLike, or a CustomBody that gives it breakRange()",
+                    m.name,
+                    m.occt_class
+                );
+            }
+            _ => {
+                let algorithms = breakable_declarations(m.setup_code);
+                let ranges = m.setup_code.matches("breakRange()").count();
+                if ranges < algorithms {
+                    bail!(
+                        "method '{}' makes {algorithms} breakable OCCT algorithms, but gives breakRange() to {ranges}: give each one breakRange()",
+                        m.name
+                    );
                 }
             }
         }
@@ -6671,6 +6786,42 @@ mod tests {
             );
             assert_eq!(line.matches(".Build(").count(), 1, "{step}");
         }
+    }
+
+    #[test]
+    fn validate_rejects_a_breakable_algorithm_without_break_range() {
+        let mut spec = sample("x");
+        spec.setup_code = "BRepAlgoAPI_Fuse op;\nop.Build();\nreturn store(op.Shape());";
+        let error = validate(&[spec]).expect_err("no breakRange");
+        assert!(error.to_string().contains("breakRange()"), "{error}");
+        spec.setup_code =
+            "BRepAlgoAPI_Fuse op;\nop.Build(breakRange());\nreturn store(op.Shape());";
+        assert!(validate(&[spec]).is_ok());
+    }
+
+    #[test]
+    fn validate_counts_one_break_range_for_each_algorithm() {
+        let mut spec = sample("x");
+        spec.setup_code = "\
+BRepFilletAPI_MakeFillet maker(solid);
+maker.Build(breakRange());
+BRepMesh_IncrementalMesh mesher(shape, params);
+return 0;";
+        assert!(validate(&[spec]).is_err());
+        // A comment that names a class is not an algorithm.
+        spec.setup_code = "// STEPControl_Reader needs a file path\nreturn 0;";
+        assert!(validate(&[spec]).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_a_breakable_class_in_a_template_with_no_range() {
+        let mut spec = sample("x");
+        spec.kind = MethodKind::SimpleShape;
+        spec.occt_class = "BRepOffsetAPI_MakeThickSolid";
+        assert!(validate(&[spec]).is_err());
+        spec.kind = MethodKind::BooleanOp;
+        spec.occt_class = "BRepAlgoAPI_Cut";
+        assert!(validate(&[spec]).is_ok());
     }
 
     #[test]

@@ -148,6 +148,8 @@ export interface OcctRawKernel {
     getShapeCount(): number;
     checkpoint(): number;
     releaseSince(mark: number): void;
+    setBreakToken(token: number): void;
+    interruptFlagAddress(): number;
 
     // The history of a step
     historyBegin(): void;
